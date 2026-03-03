@@ -1,5 +1,5 @@
 """
-Unit tests for lib/foam_utils.py
+Unit tests for module/services/foam_utils.py
 
 Covers:
 - validate_case_structure()
@@ -9,17 +9,11 @@ Covers:
 """
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-# Ensure lib/ is on the path (tests/functions/ → tests/ → open-foam-module/ → lib/)
-_LIB_DIR = str(Path(__file__).parents[2] / "lib")
-if _LIB_DIR not in sys.path:
-    sys.path.insert(0, _LIB_DIR)
-
-from foam_utils import (
+from module.services.foam_utils import (
     read_foam_job,
     read_of_value,
     parse_solver_log,

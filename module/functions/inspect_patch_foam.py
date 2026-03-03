@@ -11,19 +11,12 @@ Called by module/__main__.py via get_function(name)(input_json, temp_dir).
 
 import json
 import logging
-import sys
 from pathlib import Path
 from typing import List
 
 from module.functions.base.function_io import Output, OutputType
 from module.functions.registry import register
-
-# Add lib/ to sys.path so foam_utils can be imported
-_LIB_DIR = str(Path(__file__).parents[2] / "lib")
-if _LIB_DIR not in sys.path:
-    sys.path.insert(0, _LIB_DIR)
-
-from foam_utils import (  # noqa: E402
+from module.services.foam_utils import (
     FOAM_JOB_FILENAME,
     list_time_dirs,
     read_control_dict_values,

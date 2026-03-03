@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Extra, Field, ValidationError
 
@@ -24,6 +25,12 @@ class ModuleConfig(BaseModel):
     log_file_path: Path = Field(
         default=DEFAULT_LOG_FILE,
         description="Path to the log file to write logs to.",
+    )
+
+    openfoam_bin_dir: Optional[str] = Field(
+        default=None,
+        description="Path to the OpenFOAM bin directory (e.g. /opt/openfoam13/bin). "
+                    "If null, OpenFOAM commands are resolved from the system PATH.",
     )
 
     model_config = ConfigDict(extra=Extra.allow)

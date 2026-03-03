@@ -31,12 +31,25 @@
   "solver_module": "incompressibleFluid",
 
   // ----------------------------------------------------------
-  // Mesh control
+  // Pre-processing pipeline
   // ----------------------------------------------------------
 
-  // [DEFAULT: false] If true, runner will execute blockMesh before solving.
-  // Set false if polyMesh is already present in constant/polyMesh/.
-  "mesh_required": true,
+  // [DEFAULT: []] Ordered list of utilities to run before foamRun.
+  // Executed in sequence; each step captures its own named log artifact.
+  //
+  // Supported utilities (at minimum):
+  //   "blockMesh"       — structured hex meshing
+  //   "snappyHexMesh"   — snappy hex meshing for complex geometries
+  //   "setFields"       — initialise field values in selected regions
+  //
+  // If absent or empty, pre-processing is skipped entirely.
+  "preprocess": ["blockMesh"],
+
+  // [DEFAULT: null] Path to blockMeshDict when it lives outside the case
+  // directory (e.g. a shared resources path or pitzDaily-style layout).
+  // When set, blockMesh is invoked with -dict <blockMeshDict_path>.
+  // Ignored if "blockMesh" is not in preprocess.
+  "blockMeshDict_path": null,
 
   // ----------------------------------------------------------
   // Execution control
@@ -77,12 +90,14 @@
 
 // ============================================================
 // EXAMPLE — Parallel turbulent case with post-processing
+// (mesh already present — empty preprocess list)
 // ============================================================
 {
   "case_name": "airfoil_NACA0012_AoA5",
   "foam_version": "13",
   "solver_module": "incompressibleFluid",
-  "mesh_required": false,
+  "preprocess": [],
+  "blockMeshDict_path": null,
   "parallel": true,
   "np": 8,
   "post_process": ["foamToVTK"],
@@ -93,17 +108,36 @@
 
 
 // ============================================================
-// EXAMPLE — Multiphase damBreak case
+// EXAMPLE — Multiphase damBreak: blockMesh + setFields
 // ============================================================
 {
   "case_name": "damBreak_fine",
   "foam_version": "13",
   "solver_module": "multiphaseVoFSolver",
-  "mesh_required": true,
+  "preprocess": ["blockMesh", "setFields"],
+  "blockMeshDict_path": null,
   "parallel": false,
   "np": 1,
   "post_process": [],
   "result_fields": ["U", "p_rgh", "alpha.water"],
   "tags": ["multiphase", "VoF", "transient", "gravity"],
   "description": "Dam break VoF simulation, fine mesh, serial"
+}
+
+
+// ============================================================
+// EXAMPLE — pitzDaily: blockMeshDict lives outside case directory
+// ============================================================
+{
+  "case_name": "pitzDaily",
+  "foam_version": "13",
+  "solver_module": "incompressibleFluid",
+  "preprocess": ["blockMesh"],
+  "blockMeshDict_path": "/opt/openfoam13/tutorials/resources/blockMesh/pitzDaily",
+  "parallel": false,
+  "np": 1,
+  "post_process": [],
+  "result_fields": ["U", "p"],
+  "tags": ["pitzDaily", "incompressible", "steady-state"],
+  "description": "pitzDaily tutorial with shared blockMeshDict resource"
 }

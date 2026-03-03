@@ -13,19 +13,12 @@ Called by module/__main__.py via get_function("run_foam")(input_json, temp_dir).
 
 import json
 import logging
-import sys
 from pathlib import Path
 from typing import List
 
 from module.functions.base.function_io import Output, OutputType
 from module.functions.registry import register
-
-# Add lib/ to sys.path so foam_utils can be imported
-_LIB_DIR = str(Path(__file__).parents[2] / "lib")
-if _LIB_DIR not in sys.path:
-    sys.path.insert(0, _LIB_DIR)
-
-from foam_utils import (  # noqa: E402
+from module.services.foam_utils import (
     list_fields_at_time,
     list_time_dirs,
     parse_solver_log,
@@ -122,13 +115,18 @@ def run_foam(input_json: str, temp_dir: str) -> List[Output]:
         if rc != 0:
             raise ValueError(f"foamRun failed (rc={rc})")
 
-    # 7. Post-process utilities
+    # 7. Create ParaView touch file (<case_name>.foam) in case root
+    foam_touch = case_dir / f"{case_dir.name}.foam"
+    foam_touch.touch()
+    log.info("Created ParaView touch file: %s", foam_touch.name)
+
+    # 8. Post-process utilities
     for util in job.get("post_process", []):
         rc, _ = run_cmd(util, cwd=case_dir, log_file=log_dir / f"{util}.log")
         if rc != 0:
             log.warning("Post-process '%s' failed (rc=%d)", util, rc)
 
-    # 8. Convergence report
+    # 9. Convergence report
     log_text = solver_log.read_text() if solver_log.exists() else ""
     convergence = parse_solver_log(log_text)
     time_dirs = list_time_dirs(case_dir)
@@ -145,13 +143,13 @@ def run_foam(input_json: str, temp_dir: str) -> List[Output]:
     convergence_path = temp / "convergence_report.json"
     convergence_path.write_text(json.dumps(report, indent=2))
 
-    # 9. Copy logs into case archive
+    # 10. Copy logs into case archive
     case_logs_dir = case_dir / "logs"
     case_logs_dir.mkdir(exist_ok=True)
     for lf in log_dir.iterdir():
         (case_logs_dir / lf.name).write_bytes(lf.read_bytes())
 
-    # 10. Re-zip solved case
+    # 11. Re-zip solved case
     solved_zip_name = f"{job['case_name']}_solved.foam.zip"
     solved_zip_path = zip_case(case_dir, str(temp / solved_zip_name))
 

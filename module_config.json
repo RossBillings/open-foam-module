@@ -1,0 +1,5 @@
+{
+  "log_level": "INFO",
+  "log_file_path": "python_module.log",
+  "openfoam_bin_dir": null
+}

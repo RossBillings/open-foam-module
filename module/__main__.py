@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import os
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -108,6 +109,11 @@ def run(
         log_level=config.log_level,
         log_file_path=str(config.log_file_path),
     )
+
+    # Prepend configured OpenFOAM bin directory to PATH so subprocesses can find it
+    if config.openfoam_bin_dir:
+        os.environ["PATH"] = config.openfoam_bin_dir + os.pathsep + os.environ.get("PATH", "")
+        logger.info("OpenFOAM bin dir prepended to PATH: %s", config.openfoam_bin_dir)
 
     # 2. Read Input
     try:

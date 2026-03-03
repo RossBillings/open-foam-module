@@ -1,30 +1,30 @@
 {
-  "module_key": "@your_org:openfoam",
-  "module_display_name": "OpenFOAM v13 Solver",
+  "module_key": "@istari:openfoam",
+  "module_name": "@istari:openfoam",
+  "module_display_name": "OpenFOAM.org v13 Solver",
   "module_type": "function",
   "module_version": "0.1.0",
-  "module_checksum": "placeholder",
+  "module_checksum": "hash",
   "internal": true,
-  "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04"],
-  "agent_version": ">=1.0.0",
-  "tool_key": "openfoam",
+  "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04", "RHEL 9"],
+  "agent_version": ">=2.0.0",
+  "tool_key": "openfoamv13",
   "tool_versions": ["13"],
   "tool_display_name": "OpenFOAM v13",
   "additional_configuration_required": false,
   "authors": [
     {
-      "name": "Your Name",
-      "email": "you@your_org.com",
-      "group": "@your_org:cfd_team"
+      "name": "Ross Billings",
+      "email": "rbillings@istaridigital.com"
     }
   ],
   "dependencies": [
     {
-      "name": "openfoam13",
+      "name": "openfoam",
       "version": "13",
-      "tool_type": "auxiliary_tool",
+      "tool_type": "cfd solver",
       "display_name": "OpenFOAM v13",
-      "reason": "CFD solver runtime — foamRun, blockMesh, decomposePar, reconstructPar, checkMesh must be on PATH",
+      "reason": "CFD solver runtime",
       "url": "https://openfoam.org/download/"
     }
   ],
@@ -39,19 +39,19 @@
   ],
   "scripts": [
     {
-      "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04"],
+      "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04", "RHEL 9"],
       "install": "scripts/linux/install.sh",
       "test_unit": "scripts/linux/test_unit.sh",
       "clean": "scripts/linux/clean.sh"
     }
   ],
   "functions": {
-    "run_foam": [
+    "@istari:run_foam": [
       {
         "display_name": "Run OpenFOAM Simulation",
-        "entrypoint": "module",
-        "run_command": "python3 -m {entrypoint} {function_name} --input-file {input_file} --output-file {output_file} --temp-dir {temp_dir}",
-        "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04"],
+        "entrypoint": "openfoam_module/openfoam_module",
+        "run_command": "{entrypoint} run_foam --input-file {input_file} --output-file {output_file} --temp-dir {temp_dir} --config-path {config_path}",
+        "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04", "RHEL 9"],
         "tool_versions": ["13"],
         "function_schema": {
           "inputs": {
@@ -101,12 +101,12 @@
         }
       }
     ],
-    "inspect_foam": [
+    "@istari:inspect_foam": [
       {
         "display_name": "Inspect OpenFOAM Case",
-        "entrypoint": "module",
-        "run_command": "python3 -m {entrypoint} {function_name} --input-file {input_file} --output-file {output_file} --temp-dir {temp_dir}",
-        "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04"],
+        "entrypoint": "openfoam_module/openfoam_module",
+        "run_command": "{entrypoint} inspect_foam --input-file {input_file} --output-file {output_file} --temp-dir {temp_dir} --config-path {config_path}",
+        "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04", "RHEL 9"],
         "tool_versions": ["13"],
         "function_schema": {
           "inputs": {
@@ -135,12 +135,12 @@
         }
       }
     ],
-    "patch_foam": [
+    "@istari:patch_foam": [
       {
         "display_name": "Patch OpenFOAM Parameters",
-        "entrypoint": "module",
-        "run_command": "python3 -m {entrypoint} {function_name} --input-file {input_file} --output-file {output_file} --temp-dir {temp_dir}",
-        "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04"],
+        "entrypoint": "openfoam_module/openfoam_module",
+        "run_command": "{entrypoint} patch_foam --input-file {input_file} --output-file {output_file} --temp-dir {temp_dir} --config-path {config_path}",
+        "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04", "RHEL 9"],
         "tool_versions": ["13"],
         "function_schema": {
           "inputs": {
