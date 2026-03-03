@@ -153,3 +153,7 @@ cython_debug/
 
 # Secrets
 SECRETS.*
+
+# Dev testing directory (local test files, not committed)
+dev_testing/
+openfoam_module/
