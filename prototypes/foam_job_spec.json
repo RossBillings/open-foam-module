@@ -1,0 +1,109 @@
+// ============================================================
+// foam_job.json — OpenFOAM × Istari job metadata
+//
+// Location: <case_root>/foam_job.json  (inside the .foam.zip)
+// Purpose:  Drives agent-side logic in all three module functions.
+//           The Istari platform never reads this file directly —
+//           it is parsed exclusively by the Python runners.
+//
+// Required keys:  case_name, foam_version, solver_module
+// All other keys: optional with documented defaults
+// ============================================================
+
+{
+  // ----------------------------------------------------------
+  // Identity
+  // ----------------------------------------------------------
+
+  // [REQUIRED] Human-readable name, used in output zip filename
+  "case_name": "cavity_Re100",
+
+  // [REQUIRED] OpenFOAM major version — must match installed runtime
+  "foam_version": "13",
+
+  // [REQUIRED] Solver module loaded by foamRun.
+  // Common values:
+  //   "incompressibleFluid"   — incompressible RANS/LES (replaces icoFoam/simpleFoam/pisoFoam)
+  //   "compressibleFluid"     — compressible flows
+  //   "multicomponentFluid"   — reacting/multi-species
+  //   "isothermalFluid"       — low-Mach compressible
+  //   "foamRun"               — use if application is specified directly in controlDict
+  "solver_module": "incompressibleFluid",
+
+  // ----------------------------------------------------------
+  // Mesh control
+  // ----------------------------------------------------------
+
+  // [DEFAULT: false] If true, runner will execute blockMesh before solving.
+  // Set false if polyMesh is already present in constant/polyMesh/.
+  "mesh_required": true,
+
+  // ----------------------------------------------------------
+  // Execution control
+  // ----------------------------------------------------------
+
+  // [DEFAULT: false] Enable parallel execution via MPI.
+  // Requires system/decomposeParDict to be present.
+  "parallel": false,
+
+  // [DEFAULT: 1] MPI process count. Ignored when parallel=false.
+  // Can be overridden at submission time via override_np input parameter.
+  "np": 1,
+
+  // ----------------------------------------------------------
+  // Post-processing
+  // ----------------------------------------------------------
+
+  // [DEFAULT: []] List of post-processing utilities to run after solver.
+  // Each entry is the exact shell command to invoke from the case root.
+  // Common values: "foamToVTK", "postProcess -func 'forces'"
+  "post_process": [],
+
+  // [DEFAULT: []] Informational — which fields to highlight in reports.
+  // Does not affect execution; used in convergence_report.json output.
+  "result_fields": ["U", "p", "k", "omega"],
+
+  // ----------------------------------------------------------
+  // Metadata (informational, not used by runner logic)
+  // ----------------------------------------------------------
+
+  // Free-form tags for Istari artifact search / filtering
+  "tags": ["tutorial", "incompressible", "steady-state", "RANS"],
+
+  // Human-readable description surfaced in Istari UI
+  "description": "Lid-driven cavity at Re=100, k-omega SST turbulence model"
+}
+
+
+// ============================================================
+// EXAMPLE — Parallel turbulent case with post-processing
+// ============================================================
+{
+  "case_name": "airfoil_NACA0012_AoA5",
+  "foam_version": "13",
+  "solver_module": "incompressibleFluid",
+  "mesh_required": false,
+  "parallel": true,
+  "np": 8,
+  "post_process": ["foamToVTK"],
+  "result_fields": ["U", "p", "nut", "yPlus"],
+  "tags": ["aero", "airfoil", "RANS", "kOmegaSST"],
+  "description": "NACA0012 at AoA 5deg, Re=6M, k-omega SST, parallel 8 cores"
+}
+
+
+// ============================================================
+// EXAMPLE — Multiphase damBreak case
+// ============================================================
+{
+  "case_name": "damBreak_fine",
+  "foam_version": "13",
+  "solver_module": "multiphaseVoFSolver",
+  "mesh_required": true,
+  "parallel": false,
+  "np": 1,
+  "post_process": [],
+  "result_fields": ["U", "p_rgh", "alpha.water"],
+  "tags": ["multiphase", "VoF", "transient", "gravity"],
+  "description": "Dam break VoF simulation, fine mesh, serial"
+}

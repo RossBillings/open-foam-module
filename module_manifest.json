@@ -1,0 +1,193 @@
+{
+  "module_key": "@your_org:openfoam",
+  "module_display_name": "OpenFOAM v13 Solver",
+  "module_type": "function",
+  "module_version": "0.1.0",
+  "module_checksum": "placeholder",
+  "internal": true,
+  "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04"],
+  "agent_version": ">=1.0.0",
+  "tool_key": "openfoam",
+  "tool_versions": ["13"],
+  "tool_display_name": "OpenFOAM v13",
+  "additional_configuration_required": false,
+  "authors": [
+    {
+      "name": "Your Name",
+      "email": "you@your_org.com",
+      "group": "@your_org:cfd_team"
+    }
+  ],
+  "dependencies": [
+    {
+      "name": "openfoam13",
+      "version": "13",
+      "tool_type": "auxiliary_tool",
+      "display_name": "OpenFOAM v13",
+      "reason": "CFD solver runtime — foamRun, blockMesh, decomposePar, reconstructPar, checkMesh must be on PATH",
+      "url": "https://openfoam.org/download/"
+    }
+  ],
+  "dev_dependencies": [
+    {
+      "name": "pytest",
+      "version": ">=7.0.0",
+      "tool_type": "auxiliary_tool",
+      "display_name": "pytest",
+      "reason": "Unit and integration test runner"
+    }
+  ],
+  "scripts": [
+    {
+      "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04"],
+      "install": "scripts/linux/install.sh",
+      "test_unit": "scripts/linux/test_unit.sh",
+      "clean": "scripts/linux/clean.sh"
+    }
+  ],
+  "functions": {
+    "run_foam": [
+      {
+        "display_name": "Run OpenFOAM Simulation",
+        "entrypoint": "module",
+        "run_command": "python3 -m {entrypoint} {function_name} --input-file {input_file} --output-file {output_file} --temp-dir {temp_dir}",
+        "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04"],
+        "tool_versions": ["13"],
+        "function_schema": {
+          "inputs": {
+            "foam_case": {
+              "type": "user_model",
+              "validation_types": ["@extension:zip"],
+              "display_name": "OpenFOAM Case (.foam.zip)",
+              "optional": false
+            },
+            "override_end_time": {
+              "type": "parameter",
+              "validation_types": ["@number"],
+              "display_name": "Override endTime (seconds)",
+              "optional": true
+            },
+            "override_np": {
+              "type": "parameter",
+              "validation_types": ["@number"],
+              "display_name": "Override parallel core count",
+              "optional": true
+            }
+          },
+          "outputs": [
+            {
+              "name": "solved_case",
+              "type": "file",
+              "required": true,
+              "display_name": "Solved Case Archive (.foam.zip)",
+              "upload_as": "artifact",
+              "version_of": "foam_case"
+            },
+            {
+              "name": "run_log",
+              "type": "file",
+              "required": true,
+              "display_name": "Solver Log (foamRun.log)",
+              "upload_as": "artifact"
+            },
+            {
+              "name": "convergence_report",
+              "type": "file",
+              "required": false,
+              "display_name": "Convergence Report (JSON)",
+              "upload_as": "artifact"
+            }
+          ]
+        }
+      }
+    ],
+    "inspect_foam": [
+      {
+        "display_name": "Inspect OpenFOAM Case",
+        "entrypoint": "module",
+        "run_command": "python3 -m {entrypoint} {function_name} --input-file {input_file} --output-file {output_file} --temp-dir {temp_dir}",
+        "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04"],
+        "tool_versions": ["13"],
+        "function_schema": {
+          "inputs": {
+            "foam_case": {
+              "type": "user_model",
+              "validation_types": ["@extension:zip"],
+              "display_name": "OpenFOAM Case (.foam.zip)",
+              "optional": false
+            },
+            "run_checkmesh": {
+              "type": "parameter",
+              "validation_types": ["@boolean"],
+              "display_name": "Run checkMesh utility",
+              "optional": true
+            }
+          },
+          "outputs": [
+            {
+              "name": "inspection_report",
+              "type": "file",
+              "required": true,
+              "display_name": "Inspection Report (JSON)",
+              "upload_as": "artifact"
+            }
+          ]
+        }
+      }
+    ],
+    "patch_foam": [
+      {
+        "display_name": "Patch OpenFOAM Parameters",
+        "entrypoint": "module",
+        "run_command": "python3 -m {entrypoint} {function_name} --input-file {input_file} --output-file {output_file} --temp-dir {temp_dir}",
+        "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04"],
+        "tool_versions": ["13"],
+        "function_schema": {
+          "inputs": {
+            "foam_case": {
+              "type": "user_model",
+              "validation_types": ["@extension:zip"],
+              "display_name": "OpenFOAM Case (.foam.zip)",
+              "optional": false
+            },
+            "patches": {
+              "type": "parameter",
+              "validation_types": ["@string"],
+              "display_name": "Parameter patches (JSON array of {file, key, value})",
+              "optional": true
+            },
+            "foam_job_patches": {
+              "type": "parameter",
+              "validation_types": ["@string"],
+              "display_name": "foam_job.json overrides (JSON object)",
+              "optional": true
+            },
+            "output_case_name": {
+              "type": "parameter",
+              "validation_types": ["@string"],
+              "display_name": "New case name (optional rename)",
+              "optional": true
+            }
+          },
+          "outputs": [
+            {
+              "name": "patched_case",
+              "type": "file",
+              "required": true,
+              "display_name": "Patched Case Archive (.foam.zip)",
+              "upload_as": "artifact",
+              "version_of": "foam_case"
+            },
+            {
+              "name": "patch_report",
+              "type": "file",
+              "required": true,
+              "display_name": "Patch Report (JSON)",
+              "upload_as": "artifact"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

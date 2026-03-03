@@ -1,0 +1,18 @@
+{
+  "foam_case": {
+    "type": "user_model",
+    "value": "tests/integration/fixtures/cavity_test.foam.zip"
+  },
+  "patches": {
+    "type": "parameter",
+    "value": "[{\"file\": \"system/controlDict\", \"key\": \"endTime\", \"value\": \"1.0\"}]"
+  },
+  "foam_job_patches": {
+    "type": "parameter",
+    "value": "{}"
+  },
+  "output_case_name": {
+    "type": "parameter",
+    "value": "cavity_test_patched"
+  }
+}

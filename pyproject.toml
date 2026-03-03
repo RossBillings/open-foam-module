@@ -1,0 +1,55 @@
+[tool.poetry]
+name = "open_foam"
+version = "1.0.0"
+description = "OpenFOAM v13 CFD integration module"
+authors = ["Istari Engineering <gandalf@istaridigital.com>"]
+readme = "README.md"
+packages = [{include = "module"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+pydantic = "^2.11.7"
+
+[tool.poetry.group.dev.dependencies]
+poethepoet = "^0.27.0"
+pyinstaller = "^6.15.0"
+black = "^24.10.0"
+flake8 = "^7.3.0"
+pre-commit = "^3.8.0"
+pytest = "^8.4.1"
+pytest-mock = "^3.14.1"
+autoflake = "^2.3.1"
+mypy = "^1.17.1"
+isort = "^5.13.2"
+pytest-cov = "^6.2.1"
+
+[tool.coverage.run]
+# don't count test files in test coverage
+omit = ["tests/*", "install_trufflehog.py"]
+
+[tool.coverage.report]
+fail_under = 80
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+src_paths = ["module"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+pretty = true
+show_error_codes = true
+implicit_reexport = true
+warn_unused_ignores = false
+warn_return_any = false
+namespace_packages = true
+exclude = ["tests/", "venv/"]
+plugins = ["pydantic.mypy"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poe.tasks]
+build_binary = "pyinstaller --onefile --additional-hooks-dir=./hooks --name=python_module module/__main__.py"

@@ -1,0 +1,18 @@
+{
+  "case": {
+    "type": "user_model",
+    "value": "test_files/case.tgz"
+  },
+  "n_processors": {
+    "type": "parameter",
+    "value": 1
+  },
+  "include_summary": {
+    "type": "parameter",
+    "value": true
+  },
+  "output_format": {
+    "type": "parameter",
+    "value": "vtk"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "foam_case": {
+    "type": "user_model",
+    "value": "tests/integration/fixtures/cavity_test.foam.zip"
+  },
+  "override_end_time": {
+    "type": "parameter",
+    "value": 0.5
+  },
+  "override_np": {
+    "type": "parameter",
+    "value": 1
+  }
+}
