@@ -4,6 +4,8 @@
 
 set -e
 
+export PATH="$PATH:${HOME}/.local/bin"
+
 python_version=3.12
 
 if [ ! -f "/usr/include/python${python_version}/Python.h" ]

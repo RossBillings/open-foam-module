@@ -1,5 +1,5 @@
 """
-Integration test for patch_foam.
+Integration test for update_foam (formerly patch_foam).
 
 Requires: tests/integration/fixtures/cavity_test.foam.zip
 Does NOT require OpenFOAM to be installed.
@@ -35,11 +35,11 @@ def _make_input(patches: list, output_case_name: str = "cavity_patched",
     })
 
 
-def test_patch_foam_end_time(tmp_path):
-    from module.functions.inspect_patch_foam import patch_foam
+def test_update_foam_end_time(tmp_path):
+    from module.functions.inspect_update_foam import update_foam
 
     patches = [{"file": "system/controlDict", "key": "endTime", "value": "2.0"}]
-    result = patch_foam(_make_input(patches), str(tmp_path))
+    result = update_foam(_make_input(patches), str(tmp_path))
 
     assert len(result) == 2
     names = {r.name for r in result}
@@ -47,11 +47,11 @@ def test_patch_foam_end_time(tmp_path):
     assert "patch_report" in names
 
 
-def test_patch_foam_report_success(tmp_path):
-    from module.functions.inspect_patch_foam import patch_foam
+def test_update_foam_report_success(tmp_path):
+    from module.functions.inspect_update_foam import update_foam
 
     patches = [{"file": "system/controlDict", "key": "endTime", "value": "2.0"}]
-    result = patch_foam(_make_input(patches), str(tmp_path))
+    result = update_foam(_make_input(patches), str(tmp_path))
 
     report_out = next(r for r in result if r.name == "patch_report")
     report = json.loads(Path(report_out.path).read_text())
@@ -62,9 +62,9 @@ def test_patch_foam_report_success(tmp_path):
     assert report["detail"][0]["success"] is True
 
 
-def test_patch_foam_value_persisted_in_zip(tmp_path):
+def test_update_foam_value_persisted_in_zip(tmp_path):
     """The patched value must actually exist in the output zip."""
-    from module.functions.inspect_patch_foam import patch_foam
+    from module.functions.inspect_update_foam import update_foam
 
     # Add lib/ so we can verify with read_of_value
     _LIB_DIR = str(_PROJECT_ROOT / "lib")
@@ -73,7 +73,7 @@ def test_patch_foam_value_persisted_in_zip(tmp_path):
     from foam_utils import read_of_value
 
     patches = [{"file": "system/controlDict", "key": "endTime", "value": "2.0"}]
-    result = patch_foam(_make_input(patches), str(tmp_path))
+    result = update_foam(_make_input(patches), str(tmp_path))
 
     case_out = next(r for r in result if r.name == "patched_case")
     zip_path = Path(case_out.path)
@@ -89,11 +89,11 @@ def test_patch_foam_value_persisted_in_zip(tmp_path):
     assert read_of_value(control_dicts[0], "endTime") == "2.0"
 
 
-def test_patch_foam_missing_key_reports_failure(tmp_path):
-    from module.functions.inspect_patch_foam import patch_foam
+def test_update_foam_missing_key_reports_failure(tmp_path):
+    from module.functions.inspect_update_foam import update_foam
 
     patches = [{"file": "system/controlDict", "key": "nonExistentKey", "value": "42"}]
-    result = patch_foam(_make_input(patches), str(tmp_path))
+    result = update_foam(_make_input(patches), str(tmp_path))
 
     report_out = next(r for r in result if r.name == "patch_report")
     report = json.loads(Path(report_out.path).read_text())
@@ -102,14 +102,14 @@ def test_patch_foam_missing_key_reports_failure(tmp_path):
     assert report["detail"][0]["success"] is False
 
 
-def test_patch_foam_multiple_patches(tmp_path):
-    from module.functions.inspect_patch_foam import patch_foam
+def test_update_foam_multiple_patches(tmp_path):
+    from module.functions.inspect_update_foam import update_foam
 
     patches = [
         {"file": "system/controlDict", "key": "endTime", "value": "3.0"},
         {"file": "system/controlDict", "key": "deltaT", "value": "0.01"},
     ]
-    result = patch_foam(_make_input(patches), str(tmp_path))
+    result = update_foam(_make_input(patches), str(tmp_path))
 
     report_out = next(r for r in result if r.name == "patch_report")
     report = json.loads(Path(report_out.path).read_text())

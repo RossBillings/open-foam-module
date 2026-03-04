@@ -1,7 +1,7 @@
 {
   "module_key": "@istari:openfoam",
   "module_name": "@istari:openfoam",
-  "module_display_name": "OpenFOAM.org v13 Solver",
+  "module_display_name": "OpenFOAM v13 Solver",
   "module_type": "function",
   "module_version": "0.1.0",
   "module_checksum": "hash",
@@ -22,7 +22,7 @@
     {
       "name": "openfoam",
       "version": "13",
-      "tool_type": "cfd solver",
+      "tool_type": "auxiliary_tool",
       "display_name": "OpenFOAM v13",
       "reason": "CFD solver runtime",
       "url": "https://openfoam.org/download/"
@@ -80,7 +80,7 @@
               "type": "file",
               "required": true,
               "display_name": "Solved Case Archive (.foam.zip)",
-              "upload_as": "artifact",
+              "upload_as": "model",
               "version_of": "foam_case"
             },
             {
@@ -135,11 +135,11 @@
         }
       }
     ],
-    "@istari:patch_foam": [
+    "@istari:update_foam": [
       {
-        "display_name": "Patch OpenFOAM Parameters",
+        "display_name": "Update OpenFOAM Parameters",
         "entrypoint": "openfoam_module/openfoam_module",
-        "run_command": "{entrypoint} patch_foam --input-file {input_file} --output-file {output_file} --temp-dir {temp_dir} --config-path {config_path}",
+        "run_command": "{entrypoint} update_foam --input-file {input_file} --output-file {output_file} --temp-dir {temp_dir} --config-path {config_path}",
         "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04", "RHEL 9"],
         "tool_versions": ["13"],
         "function_schema": {
@@ -175,7 +175,7 @@
               "type": "file",
               "required": true,
               "display_name": "Patched Case Archive (.foam.zip)",
-              "upload_as": "artifact",
+              "upload_as": "model",
               "version_of": "foam_case"
             },
             {

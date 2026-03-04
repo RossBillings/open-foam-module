@@ -3,7 +3,7 @@ module/functions/inspect_patch_foam.py
 
 Two Istari Integration Functions:
   - inspect_foam  : Pre-flight case validation and reporting
-  - patch_foam    : Modify OF parameters and return new .foam.zip
+  - update_foam   : Modify OF parameters and return new .foam.zip
 
 Both registered in the function registry.
 Called by module/__main__.py via get_function(name)(input_json, temp_dir).
@@ -122,10 +122,10 @@ register("inspect_foam", inspect_foam)
 
 
 # =============================================================================
-# patch_foam
+# update_foam
 # =============================================================================
 
-def patch_foam(input_json: str, temp_dir: str) -> List[Output]:
+def update_foam(input_json: str, temp_dir: str) -> List[Output]:
     """
     Apply parameter patches to an OpenFOAM case and return a new .foam.zip.
     Does not run the solver.
@@ -156,7 +156,7 @@ def patch_foam(input_json: str, temp_dir: str) -> List[Output]:
     temp = Path(temp_dir)
     temp.mkdir(parents=True, exist_ok=True)
 
-    log.info("=== patch_foam START === (%d patches)", len(patches))
+    log.info("=== update_foam START === (%d patches)", len(patches))
 
     case_dir = unzip_case(zip_path, str(temp / "case"))
 
@@ -211,7 +211,7 @@ def patch_foam(input_json: str, temp_dir: str) -> List[Output]:
     report_path = temp / "patch_report.json"
     report_path.write_text(json.dumps(full_report, indent=2))
 
-    log.info("=== patch_foam COMPLETE === (%d failed)", len(failed))
+    log.info("=== update_foam COMPLETE === (%d failed)", len(failed))
 
     return [
         Output(name="patched_case", type=OutputType.FILE, path=str(Path(patched_zip).resolve())),
@@ -219,4 +219,4 @@ def patch_foam(input_json: str, temp_dir: str) -> List[Output]:
     ]
 
 
-register("patch_foam", patch_foam)
+register("update_foam", update_foam)

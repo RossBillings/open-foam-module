@@ -17,10 +17,10 @@ def test_get_inspect_foam():
     assert function.__name__ == "inspect_foam"
 
 
-def test_get_patch_foam():
-    function = get_function("patch_foam")
+def test_get_update_foam():
+    function = get_function("update_foam")
     assert callable(function)
-    assert function.__name__ == "patch_foam"
+    assert function.__name__ == "update_foam"
 
 
 def test_get_function_from_unknown_name():

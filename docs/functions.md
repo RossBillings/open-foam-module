@@ -104,7 +104,7 @@ When `run_checkmesh: true` and a mesh exists, `checkmesh_returncode` and `checkm
 
 ---
 
-## `patch_foam` — Patch OpenFOAM Parameters
+## `update_foam` — Update OpenFOAM Parameters
 
 **What it does:** Modifies case files without running the solver.
 1. Unzips the case
