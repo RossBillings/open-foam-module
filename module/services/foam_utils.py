@@ -50,8 +50,10 @@ def write_output(output_file: str, payload: dict) -> None:
 def unzip_case(zip_path: str, dest_dir: str) -> Path:
     """
     Unzip a .foam.zip into dest_dir.
-    Returns the path to the OpenFOAM case root (the single top-level directory
-    inside the zip, e.g. dest_dir/cavity/).
+    Handles two structures:
+      1. Flat: case files at zip root (e.g. system/controlDict at root)
+      2. Wrapped: single top-level directory containing the case (e.g. damBreak/system/...)
+    Returns the path to the OpenFOAM case root.
     Raises ValueError if the zip structure is unexpected.
     """
     dest = Path(dest_dir)
@@ -60,14 +62,23 @@ def unzip_case(zip_path: str, dest_dir: str) -> Path:
     with zipfile.ZipFile(zip_path) as zf:
         zf.extractall(dest)
 
+    # Check for flat structure first — system/controlDict at root
+    if (dest / "system" / "controlDict").exists():
+        log.info("Unzipped case to %s (flat structure)", dest)
+        return dest
+
+    # Check for wrapped structure — single top-level directory
     top_level = [p for p in dest.iterdir() if p.is_dir()]
-    if len(top_level) != 1:
-        raise ValueError(
-            f"Expected exactly one top-level directory in zip, found: {top_level}"
-        )
-    case_dir = top_level[0]
-    log.info("Unzipped case to %s", case_dir)
-    return case_dir
+    if len(top_level) == 1 and (top_level[0] / "system" / "controlDict").exists():
+        case_dir = top_level[0]
+        log.info("Unzipped case to %s (wrapped structure)", case_dir)
+        return case_dir
+
+    raise ValueError(
+        f"Could not locate OpenFOAM case root in zip. "
+        f"Expected system/controlDict at root or inside a single top-level directory. "
+        f"Contents: {list(dest.iterdir())}"
+    )
 
 
 def zip_case(case_dir: Path, output_zip_path: str) -> str:
