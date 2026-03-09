@@ -28,7 +28,7 @@ def require_fixture():
 def _make_input(patches: list, output_case_name: str = "cavity_patched") -> str:
     return json.dumps({
         "foam_case": {"type": "user_model", "value": str(FIXTURE)},
-        "patches": {"type": "parameter", "value": json.dumps(patches)},
+        "input_json": {"type": "parameter", "value": json.dumps(patches)},
         "output_case_name": {"type": "parameter", "value": output_case_name},
     })
 

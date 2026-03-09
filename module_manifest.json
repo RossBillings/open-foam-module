@@ -3,7 +3,7 @@
   "module_name": "@istari:openfoam",
   "module_display_name": "OpenFOAM v13 Solver",
   "module_type": "function",
-  "module_version": "0.1.0",
+  "module_version": "0.2.0",
   "module_checksum": "hash",
   "internal": true,
   "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04", "RHEL 9"],
@@ -150,16 +150,10 @@
               "display_name": "OpenFOAM Case (.foam.zip)",
               "optional": false
             },
-            "patches": {
+            "input_json": {
               "type": "parameter",
               "validation_types": ["@string"],
               "display_name": "Parameter patches (JSON array of {file, key, value})",
-              "optional": true
-            },
-            "foam_job_patches": {
-              "type": "parameter",
-              "validation_types": ["@string"],
-              "display_name": "foam_job.json overrides (JSON object)",
               "optional": true
             },
             "output_case_name": {

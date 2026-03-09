@@ -142,8 +142,8 @@ def update_foam(input_json: str, temp_dir: str) -> List[Output]:
 
     zip_path = raw["foam_case"]["value"]
 
-    # patches may be passed as a JSON string
-    patches_raw = raw["patches"]["value"] if "patches" in raw else None
+    # input_json may be passed as a JSON string
+    patches_raw = raw["input_json"]["value"] if "input_json" in raw else None
     if isinstance(patches_raw, str):
         patches = json.loads(patches_raw) if patches_raw else []
     else:
