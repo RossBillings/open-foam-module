@@ -17,10 +17,9 @@ from typing import List
 from module.functions.base.function_io import Output, OutputType
 from module.functions.registry import register
 from module.services.foam_utils import (
-    FOAM_JOB_FILENAME,
+    infer_run_config,
     list_time_dirs,
     read_control_dict_values,
-    read_foam_job,
     run_cmd,
     unzip_case,
     validate_case_structure,
@@ -63,16 +62,21 @@ def inspect_foam(input_json: str, temp_dir: str) -> List[Output]:
     report["structure_issues"] = issues
     report["structure_valid"] = len(issues) == 0
 
-    # foam_job.json
-    try:
-        job = read_foam_job(case_dir)
-        report["foam_job"] = job
-    except Exception as exc:
-        report["foam_job"] = None
-        report["foam_job_error"] = str(exc)
-
     # controlDict
     report["control_dict"] = read_control_dict_values(case_dir)
+
+    # Inferred run config (pre-processing steps detected)
+    run_config = infer_run_config(case_dir)
+    pre_steps = []
+    if run_config["run_blockmesh"]:
+        pre_steps.append("blockMesh")
+    if run_config["run_snappy"]:
+        pre_steps.append("snappyHexMesh")
+    if run_config["run_set_fields"]:
+        pre_steps.append("setFields")
+    report["pre_processing_detected"] = pre_steps
+    report["parallel_detected"] = run_config["parallel"]
+    report["np_detected"] = run_config["np"]
 
     # Mesh status
     poly_mesh = case_dir / "constant" / "polyMesh"
@@ -138,18 +142,12 @@ def update_foam(input_json: str, temp_dir: str) -> List[Output]:
 
     zip_path = raw["foam_case"]["value"]
 
-    # patches and foam_job_patches may be passed as JSON strings
+    # patches may be passed as a JSON string
     patches_raw = raw["patches"]["value"] if "patches" in raw else None
     if isinstance(patches_raw, str):
         patches = json.loads(patches_raw) if patches_raw else []
     else:
         patches = patches_raw or []
-
-    job_patches_raw = raw["foam_job_patches"]["value"] if "foam_job_patches" in raw else None
-    if isinstance(job_patches_raw, str):
-        job_patches = json.loads(job_patches_raw) if job_patches_raw else {}
-    else:
-        job_patches = job_patches_raw or {}
 
     output_case_name = raw["output_case_name"]["value"] if "output_case_name" in raw else None
 
@@ -183,13 +181,6 @@ def update_foam(input_json: str, temp_dir: str) -> List[Output]:
             "reason": "OK" if ok else f"Key '{key}' not found in {file_rel}",
         })
 
-    # Apply foam_job.json patches
-    if job_patches:
-        job = read_foam_job(case_dir)
-        job.update(job_patches)
-        (case_dir / FOAM_JOB_FILENAME).write_text(json.dumps(job, indent=2))
-        log.info("foam_job.json updated: %s", list(job_patches.keys()))
-
     # Optional rename
     if output_case_name:
         new_case_dir = case_dir.parent / output_case_name
@@ -206,7 +197,6 @@ def update_foam(input_json: str, temp_dir: str) -> List[Output]:
         "patches_succeeded": len(patches) - len(failed),
         "patches_failed": len(failed),
         "detail": patch_report,
-        "foam_job_patches": job_patches,
     }
     report_path = temp / "patch_report.json"
     report_path.write_text(json.dumps(full_report, indent=2))

@@ -21,7 +21,6 @@ log = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-FOAM_JOB_FILENAME = "foam_job.json"
 REQUIRED_DIRS = {"0", "constant", "system"}
 REQUIRED_SYSTEM_FILES = {"controlDict", "fvSchemes", "fvSolution"}
 
@@ -68,7 +67,7 @@ def unzip_case(zip_path: str, dest_dir: str) -> Path:
         return dest
 
     # Check for wrapped structure — single top-level directory
-    top_level = [p for p in dest.iterdir() if p.is_dir()]
+    top_level = [p for p in dest.iterdir() if p.is_dir() and p.name != "__MACOSX"]
     if len(top_level) == 1 and (top_level[0] / "system" / "controlDict").exists():
         case_dir = top_level[0]
         log.info("Unzipped case to %s (wrapped structure)", case_dir)
@@ -96,29 +95,41 @@ def zip_case(case_dir: Path, output_zip_path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# foam_job.json
+# Run configuration inference from standard OpenFOAM files
 # ---------------------------------------------------------------------------
 
-def read_foam_job(case_dir: Path) -> dict:
-    """Read and validate foam_job.json from the case root."""
-    job_file = case_dir / FOAM_JOB_FILENAME
-    if not job_file.exists():
-        raise FileNotFoundError(f"Missing {FOAM_JOB_FILENAME} in {case_dir}")
-    with open(job_file) as fh:
-        job = json.load(fh)
+def infer_run_config(case_dir: Path) -> dict:
+    """
+    Infer run configuration from standard OpenFOAM files.
+    No custom foam_job.json required.
 
-    required = {"case_name", "foam_version", "solver_module"}
-    missing = required - job.keys()
-    if missing:
-        raise ValueError(f"foam_job.json missing required keys: {missing}")
+    Returns a dict with keys:
+      run_blockmesh       bool  — blockMeshDict present
+      run_snappy          bool  — snappyHexMeshDict present
+      run_set_fields      bool  — setFieldsDict present
+      parallel            bool  — decomposeParDict present and numberOfSubdomains > 1
+      np                  int   — numberOfSubdomains (1 if no decomposeParDict)
+    """
+    config: dict[str, Any] = {}
 
-    job.setdefault("mesh_required", False)
-    job.setdefault("parallel", False)
-    job.setdefault("np", 1)
-    job.setdefault("post_process", [])
-    job.setdefault("result_fields", [])
-    job.setdefault("tags", [])
-    return job
+    config["run_blockmesh"] = (case_dir / "system" / "blockMeshDict").exists()
+    config["run_snappy"] = (case_dir / "system" / "snappyHexMeshDict").exists()
+    config["run_set_fields"] = (case_dir / "system" / "setFieldsDict").exists()
+
+    decompose_dict = case_dir / "system" / "decomposeParDict"
+    if decompose_dict.exists():
+        np_val = read_of_value(decompose_dict, "numberOfSubdomains")
+        try:
+            np_count = int(np_val) if np_val is not None else 1
+        except ValueError:
+            np_count = 1
+        config["parallel"] = np_count > 1
+        config["np"] = np_count
+    else:
+        config["parallel"] = False
+        config["np"] = 1
+
+    return config
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +189,7 @@ def write_of_value(file_path: Path, key: str, new_value: str) -> bool:
 def read_control_dict_values(case_dir: Path) -> dict:
     cd = case_dir / "system" / "controlDict"
     keys = [
-        "application", "startTime", "endTime", "deltaT",
+        "application", "solver", "startTime", "endTime", "deltaT",
         "writeInterval", "startFrom", "stopAt",
     ]
     return {k: read_of_value(cd, k) for k in keys}

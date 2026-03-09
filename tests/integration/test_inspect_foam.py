@@ -47,16 +47,17 @@ def test_inspect_foam_structure_valid(tmp_path):
     assert report["structure_issues"] == []
 
 
-def test_inspect_foam_job_fields(tmp_path):
+def test_inspect_foam_pre_processing_detected(tmp_path):
+    """Cavity fixture has blockMeshDict → blockMesh should be detected."""
     from module.functions.inspect_patch_foam import inspect_foam
 
     result = inspect_foam(_make_input(tmp_path), str(tmp_path))
     report = json.loads(Path(result[0].path).read_text())
 
-    job = report["foam_job"]
-    assert job["case_name"] == "cavity_test"
-    assert job["foam_version"] == "13"
-    assert job["solver_module"] == "incompressibleFluid"
+    assert "pre_processing_detected" in report
+    assert "blockMesh" in report["pre_processing_detected"]
+    assert report["parallel_detected"] is False
+    assert report["np_detected"] == 1
 
 
 def test_inspect_foam_mesh_not_present(tmp_path):

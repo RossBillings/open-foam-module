@@ -6,17 +6,19 @@ Covers:
 - read_of_value() / write_of_value()
 - parse_solver_log()
 - read_foam_job()
+- unzip_case()
 """
 
-import json
+import zipfile
 from pathlib import Path
 
 import pytest
 
 from module.services.foam_utils import (
-    read_foam_job,
+    infer_run_config,
     read_of_value,
     parse_solver_log,
+    unzip_case,
     validate_case_structure,
     write_of_value,
 )
@@ -176,50 +178,122 @@ def test_parse_solver_log_empty():
 
 
 # ---------------------------------------------------------------------------
-# read_foam_job
+# infer_run_config
 # ---------------------------------------------------------------------------
 
-VALID_JOB = {
-    "case_name": "cavity_test",
-    "foam_version": "13",
-    "solver_module": "incompressibleFluid",
-    "mesh_required": True,
-    "parallel": False,
-    "np": 1,
-}
+def _make_minimal_case(case_dir: Path) -> None:
+    """Create a minimal valid OpenFOAM case directory structure."""
+    (case_dir / "0").mkdir(parents=True)
+    (case_dir / "constant").mkdir()
+    system = case_dir / "system"
+    system.mkdir()
+    (system / "controlDict").write_text("endTime 1;")
+    (system / "fvSchemes").write_text("")
+    (system / "fvSolution").write_text("")
 
 
-def test_read_foam_job_valid(tmp_path):
-    """Valid foam_job.json is read and returned with defaults applied."""
+def test_infer_run_config_no_optional_files(tmp_path):
+    """No blockMeshDict/snappyHexMeshDict/setFieldsDict/decomposeParDict → all False."""
     case = tmp_path / "cavity"
-    case.mkdir()
-    (case / "foam_job.json").write_text(json.dumps(VALID_JOB))
+    _make_minimal_case(case)
 
-    job = read_foam_job(case)
-    assert job["case_name"] == "cavity_test"
-    assert job["foam_version"] == "13"
-    assert job["solver_module"] == "incompressibleFluid"
-    # Defaults applied
-    assert "post_process" in job
-    assert "result_fields" in job
-    assert "tags" in job
+    config = infer_run_config(case)
+    assert config["run_blockmesh"] is False
+    assert config["run_snappy"] is False
+    assert config["run_set_fields"] is False
+    assert config["parallel"] is False
+    assert config["np"] == 1
 
 
-def test_read_foam_job_missing_file(tmp_path):
-    """FileNotFoundError raised when foam_job.json does not exist."""
+def test_infer_run_config_blockmesh_detected(tmp_path):
+    """blockMeshDict present → run_blockmesh=True."""
     case = tmp_path / "cavity"
-    case.mkdir()
+    _make_minimal_case(case)
+    (case / "system" / "blockMeshDict").write_text("")
 
-    with pytest.raises(FileNotFoundError, match="foam_job.json"):
-        read_foam_job(case)
+    config = infer_run_config(case)
+    assert config["run_blockmesh"] is True
 
 
-def test_read_foam_job_missing_required_keys(tmp_path):
-    """ValueError raised when required keys are absent."""
+def test_infer_run_config_parallel_from_decompose_par_dict(tmp_path):
+    """decomposeParDict with numberOfSubdomains 4 → parallel=True, np=4."""
     case = tmp_path / "cavity"
-    case.mkdir()
-    incomplete = {"case_name": "test"}  # missing foam_version, solver_module
-    (case / "foam_job.json").write_text(json.dumps(incomplete))
+    _make_minimal_case(case)
+    (case / "system" / "decomposeParDict").write_text("numberOfSubdomains 4;")
 
-    with pytest.raises(ValueError, match="missing required keys"):
-        read_foam_job(case)
+    config = infer_run_config(case)
+    assert config["parallel"] is True
+    assert config["np"] == 4
+
+
+def test_infer_run_config_serial_with_decompose_par_dict(tmp_path):
+    """decomposeParDict with numberOfSubdomains 1 → parallel=False."""
+    case = tmp_path / "cavity"
+    _make_minimal_case(case)
+    (case / "system" / "decomposeParDict").write_text("numberOfSubdomains 1;")
+
+    config = infer_run_config(case)
+    assert config["parallel"] is False
+    assert config["np"] == 1
+
+
+# ---------------------------------------------------------------------------
+# unzip_case
+# ---------------------------------------------------------------------------
+
+def _make_case_zip(zip_path: Path, case_dir_name: str | None = None,
+                   extra_dirs: list[str] | None = None) -> None:
+    """
+    Helper: create a minimal .foam.zip with system/controlDict.
+
+    If case_dir_name is given, files are wrapped inside that directory
+    (e.g. airFoil2D/system/controlDict).  Otherwise they are at the root.
+    Extra top-level directories (e.g. '__MACOSX') can be added via extra_dirs.
+    """
+    prefix = f"{case_dir_name}/" if case_dir_name else ""
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr(f"{prefix}system/controlDict", "endTime 1;")
+        zf.writestr(f"{prefix}system/fvSchemes", "")
+        zf.writestr(f"{prefix}system/fvSolution", "")
+        zf.writestr(f"{prefix}constant/", "")
+        zf.writestr(f"{prefix}0/", "")
+        for d in (extra_dirs or []):
+            zf.writestr(f"{d}/.keep", "")
+
+
+def test_unzip_case_flat_structure(tmp_path):
+    """Flat zip (system/controlDict at root) returns dest_dir directly."""
+    zip_path = tmp_path / "case.foam.zip"
+    _make_case_zip(zip_path)
+
+    result = unzip_case(str(zip_path), str(tmp_path / "out"))
+    assert (result / "system" / "controlDict").exists()
+
+
+def test_unzip_case_wrapped_structure(tmp_path):
+    """Wrapped zip (airFoil2D/system/controlDict) returns the inner directory."""
+    zip_path = tmp_path / "case.foam.zip"
+    _make_case_zip(zip_path, case_dir_name="airFoil2D")
+
+    result = unzip_case(str(zip_path), str(tmp_path / "out"))
+    assert result.name == "airFoil2D"
+    assert (result / "system" / "controlDict").exists()
+
+
+def test_unzip_case_macosx_ignored(tmp_path):
+    """__MACOSX directory is ignored; the single real case dir is returned."""
+    zip_path = tmp_path / "case.foam.zip"
+    _make_case_zip(zip_path, case_dir_name="airFoil2D", extra_dirs=["__MACOSX"])
+
+    result = unzip_case(str(zip_path), str(tmp_path / "out"))
+    assert result.name == "airFoil2D"
+    assert (result / "system" / "controlDict").exists()
+
+
+def test_unzip_case_macosx_with_flat_structure(tmp_path):
+    """__MACOSX in a flat zip does not confuse the flat-structure check."""
+    zip_path = tmp_path / "case.foam.zip"
+    _make_case_zip(zip_path, extra_dirs=["__MACOSX"])
+
+    result = unzip_case(str(zip_path), str(tmp_path / "out"))
+    assert (result / "system" / "controlDict").exists()

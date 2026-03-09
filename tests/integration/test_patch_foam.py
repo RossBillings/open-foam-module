@@ -25,18 +25,16 @@ def require_fixture():
         pytest.skip(f"Integration fixture not found: {FIXTURE}")
 
 
-def _make_input(patches: list, output_case_name: str = "cavity_patched",
-                foam_job_patches: dict | None = None) -> str:
+def _make_input(patches: list, output_case_name: str = "cavity_patched") -> str:
     return json.dumps({
         "foam_case": {"type": "user_model", "value": str(FIXTURE)},
         "patches": {"type": "parameter", "value": json.dumps(patches)},
-        "foam_job_patches": {"type": "parameter", "value": json.dumps(foam_job_patches or {})},
         "output_case_name": {"type": "parameter", "value": output_case_name},
     })
 
 
 def test_update_foam_end_time(tmp_path):
-    from module.functions.inspect_update_foam import update_foam
+    from module.functions.inspect_patch_foam import update_foam
 
     patches = [{"file": "system/controlDict", "key": "endTime", "value": "2.0"}]
     result = update_foam(_make_input(patches), str(tmp_path))
@@ -48,7 +46,7 @@ def test_update_foam_end_time(tmp_path):
 
 
 def test_update_foam_report_success(tmp_path):
-    from module.functions.inspect_update_foam import update_foam
+    from module.functions.inspect_patch_foam import update_foam
 
     patches = [{"file": "system/controlDict", "key": "endTime", "value": "2.0"}]
     result = update_foam(_make_input(patches), str(tmp_path))
@@ -64,13 +62,8 @@ def test_update_foam_report_success(tmp_path):
 
 def test_update_foam_value_persisted_in_zip(tmp_path):
     """The patched value must actually exist in the output zip."""
-    from module.functions.inspect_update_foam import update_foam
-
-    # Add lib/ so we can verify with read_of_value
-    _LIB_DIR = str(_PROJECT_ROOT / "lib")
-    if _LIB_DIR not in sys.path:
-        sys.path.insert(0, _LIB_DIR)
-    from foam_utils import read_of_value
+    from module.functions.inspect_patch_foam import update_foam
+    from module.services.foam_utils import read_of_value
 
     patches = [{"file": "system/controlDict", "key": "endTime", "value": "2.0"}]
     result = update_foam(_make_input(patches), str(tmp_path))
@@ -90,7 +83,7 @@ def test_update_foam_value_persisted_in_zip(tmp_path):
 
 
 def test_update_foam_missing_key_reports_failure(tmp_path):
-    from module.functions.inspect_update_foam import update_foam
+    from module.functions.inspect_patch_foam import update_foam
 
     patches = [{"file": "system/controlDict", "key": "nonExistentKey", "value": "42"}]
     result = update_foam(_make_input(patches), str(tmp_path))
@@ -103,7 +96,7 @@ def test_update_foam_missing_key_reports_failure(tmp_path):
 
 
 def test_update_foam_multiple_patches(tmp_path):
-    from module.functions.inspect_update_foam import update_foam
+    from module.functions.inspect_patch_foam import update_foam
 
     patches = [
         {"file": "system/controlDict", "key": "endTime", "value": "3.0"},

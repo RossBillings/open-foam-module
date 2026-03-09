@@ -4,8 +4,9 @@ module/functions/run_foam.py
 Istari Integration Function: run_foam
 Module: @your_org:openfoam
 
-Full pipeline: unzip → (blockMesh) → (decomposePar) → foamRun
-             → (reconstructPar) → parse log → re-zip solved case.
+Full pipeline: unzip → (blockMesh) → (snappyHexMesh) → (setFields)
+             → (decomposePar) → foamRun → (reconstructPar)
+             → parse log → re-zip solved case.
 
 Registered as "run_foam" in the function registry.
 Called by module/__main__.py via get_function("run_foam")(input_json, temp_dir).
@@ -19,11 +20,11 @@ from typing import List
 from module.functions.base.function_io import Output, OutputType
 from module.functions.registry import register
 from module.services.foam_utils import (
+    infer_run_config,
     list_fields_at_time,
     list_time_dirs,
     parse_solver_log,
     read_control_dict_values,
-    read_foam_job,
     run_cmd,
     unzip_case,
     validate_case_structure,
@@ -57,10 +58,11 @@ def run_foam(input_json: str, temp_dir: str) -> List[Output]:
 
     # 1. Unzip
     case_dir = unzip_case(zip_path, str(temp / "case"))
+    case_name = case_dir.name
 
-    # 2. Read foam_job.json
-    job = read_foam_job(case_dir)
-    log.info("Job config: %s", json.dumps(job, indent=2))
+    # 2. Infer run config from standard OpenFOAM files
+    config = infer_run_config(case_dir)
+    log.info("Inferred run config: %s", json.dumps(config, indent=2))
 
     # 3. Validate structure
     issues = validate_case_structure(case_dir)
@@ -72,29 +74,38 @@ def run_foam(input_json: str, temp_dir: str) -> List[Output]:
     if override_end_time is not None:
         write_of_value(cd_path, "endTime", str(override_end_time))
     if override_np is not None:
-        job["np"] = int(override_np)
+        np_count = int(override_np)
+        config["np"] = np_count
         dp = case_dir / "system" / "decomposeParDict"
         if dp.exists():
-            write_of_value(dp, "numberOfSubdomains", str(override_np))
-        if int(override_np) > 1:
-            job["parallel"] = True
+            write_of_value(dp, "numberOfSubdomains", str(np_count))
+        if np_count > 1:
+            config["parallel"] = True
 
-    # 5. Mesh
-    if job.get("mesh_required", False):
-        poly_mesh = case_dir / "constant" / "polyMesh"
-        if not (poly_mesh.is_dir() and any(poly_mesh.iterdir())):
-            if not (case_dir / "system" / "blockMeshDict").exists():
-                raise FileNotFoundError(
-                    "mesh_required=true but system/blockMeshDict not found"
-                )
-            rc, _ = run_cmd("blockMesh", cwd=case_dir, log_file=log_dir / "blockMesh.log")
-            if rc != 0:
-                raise ValueError(f"blockMesh failed (rc={rc})")
+    # 5. Pre-processing
+    poly_mesh = case_dir / "constant" / "polyMesh"
+    mesh_exists = poly_mesh.is_dir() and any(poly_mesh.iterdir())
+
+    if config["run_blockmesh"] and not mesh_exists:
+        rc, _ = run_cmd("blockMesh", cwd=case_dir, log_file=log_dir / "blockMesh.log")
+        if rc != 0:
+            raise ValueError(f"blockMesh failed (rc={rc})")
+
+    if config["run_snappy"]:
+        rc, _ = run_cmd("snappyHexMesh -overwrite", cwd=case_dir,
+                        log_file=log_dir / "snappyHexMesh.log")
+        if rc != 0:
+            raise ValueError(f"snappyHexMesh failed (rc={rc})")
+
+    if config["run_set_fields"]:
+        rc, _ = run_cmd("setFields", cwd=case_dir, log_file=log_dir / "setFields.log")
+        if rc != 0:
+            raise ValueError(f"setFields failed (rc={rc})")
 
     # 6. Solve
     solver_log = log_dir / "foamRun.log"
-    parallel = job.get("parallel", False)
-    np_count = job.get("np", 1)
+    parallel = config["parallel"]
+    np_count = config["np"]
 
     if parallel and np_count > 1:
         rc, _ = run_cmd("decomposePar", cwd=case_dir, log_file=log_dir / "decomposePar.log")
@@ -116,24 +127,17 @@ def run_foam(input_json: str, temp_dir: str) -> List[Output]:
             raise ValueError(f"foamRun failed (rc={rc})")
 
     # 7. Create ParaView touch file (<case_name>.foam) in case root
-    foam_touch = case_dir / f"{case_dir.name}.foam"
+    foam_touch = case_dir / f"{case_name}.foam"
     foam_touch.touch()
     log.info("Created ParaView touch file: %s", foam_touch.name)
 
-    # 8. Post-process utilities
-    for util in job.get("post_process", []):
-        rc, _ = run_cmd(util, cwd=case_dir, log_file=log_dir / f"{util}.log")
-        if rc != 0:
-            log.warning("Post-process '%s' failed (rc=%d)", util, rc)
-
-    # 9. Convergence report
+    # 8. Convergence report
     log_text = solver_log.read_text() if solver_log.exists() else ""
     convergence = parse_solver_log(log_text)
     time_dirs = list_time_dirs(case_dir)
     last_time = time_dirs[-1] if time_dirs else None
     report = {
-        "case_name": job.get("case_name"),
-        "solver_module": job.get("solver_module"),
+        "case_name": case_name,
         "control_dict": read_control_dict_values(case_dir),
         "time_dirs_written": time_dirs,
         "last_time": last_time,
@@ -143,14 +147,14 @@ def run_foam(input_json: str, temp_dir: str) -> List[Output]:
     convergence_path = temp / "convergence_report.json"
     convergence_path.write_text(json.dumps(report, indent=2))
 
-    # 10. Copy logs into case archive
+    # 9. Copy logs into case archive
     case_logs_dir = case_dir / "logs"
     case_logs_dir.mkdir(exist_ok=True)
     for lf in log_dir.iterdir():
         (case_logs_dir / lf.name).write_bytes(lf.read_bytes())
 
-    # 11. Re-zip solved case
-    solved_zip_name = f"{job['case_name']}_solved.foam.zip"
+    # 10. Re-zip solved case
+    solved_zip_name = f"{case_name}_solved.foam.zip"
     solved_zip_path = zip_case(case_dir, str(temp / solved_zip_name))
 
     log.info("=== run_foam COMPLETE — converged=%s ===", report["converged"])
