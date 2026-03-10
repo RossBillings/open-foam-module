@@ -96,6 +96,13 @@
               "required": false,
               "display_name": "Convergence Report (JSON)",
               "upload_as": "artifact"
+            },
+            {
+              "name": "inputs",
+              "type": "file",
+              "required": false,
+              "display_name": "Simulation Inputs — post-override (inputs.json)",
+              "upload_as": "artifact"
             }
           ]
         }
@@ -129,6 +136,13 @@
               "type": "file",
               "required": true,
               "display_name": "Inspection Report (JSON)",
+              "upload_as": "artifact"
+            },
+            {
+              "name": "inputs",
+              "type": "file",
+              "required": false,
+              "display_name": "Simulation Inputs (inputs.json)",
               "upload_as": "artifact"
             }
           ]

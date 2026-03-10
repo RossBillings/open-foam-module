@@ -293,3 +293,161 @@ def list_fields_at_time(case_dir: Path, time: str) -> list[str]:
     if not time_dir.is_dir():
         return []
     return [f.name for f in time_dir.iterdir() if f.is_file()]
+
+
+# =============================================================================
+# inputs.json extraction
+# =============================================================================
+
+from datetime import datetime, timezone as _tz
+from typing import Optional as _Opt
+
+
+def extract_inputs(case_dir: str, job: dict, source_zip: str) -> dict:
+    """
+    Build a dict conforming to schemas/inputs_schema.json (urn:istari:openfoam:inputs:v1)
+    by reading the live OpenFOAM case files.
+
+    Args:
+        case_dir:   Path to the unzipped case root (str or Path).
+        job:        Parsed foam_job.json dict.
+        source_zip: Original .foam.zip filename (for provenance).
+
+    Returns:
+        Schema-conformant dict. Write to inputs.json with json.dumps(result, indent=2).
+    """
+    root = Path(case_dir)
+    control = _parse_of_dict_flat(root / "system" / "controlDict")
+    transport = _parse_of_dict_flat(root / "constant" / "transportProperties")
+
+    # OF13 uses momentumTransport; fall back for older cases
+    turb_path = root / "constant" / "momentumTransport"
+    if not turb_path.exists():
+        turb_path = root / "constant" / "turbulenceProperties"
+    turb = _parse_of_dict_flat(turb_path)
+
+    return {
+        "schema_version": "1.0",
+        "case_name": job.get("case_name", root.name),
+        "solver": {
+            "application": control.get("application"),
+            "module": job.get("solver_module"),
+            "parallel": bool(job.get("parallel", False)),
+            "np": int(job.get("np", 1)),
+        },
+        "time": {
+            "startTime": _to_num(control.get("startTime")),
+            "endTime": _to_num(control.get("endTime")),
+            "deltaT": _to_num(control.get("deltaT")),
+            "writeInterval": _to_num(control.get("writeInterval")),
+            "writeControl": control.get("writeControl"),
+            "maxCo": _to_num(control.get("maxCo")),
+        },
+        "transport": {
+            "model": transport.get("transportModel") or transport.get("model"),
+            "nu": _to_num(transport.get("nu")),
+        },
+        "turbulence": {
+            "simulationType": turb.get("simulationType"),
+            "model": (
+                _nested_get(turb, "RAS", "model")
+                or _nested_get(turb, "LES", "model")
+            ),
+        },
+        "boundary_conditions": _extract_bcs_summary(root),
+        "mesh": {
+            "generator": _detect_mesh_gen(root, job),
+            "cell_count": None,  # populated externally if checkMesh was run
+        },
+        "metadata": {
+            "generated_by": "openfoam_module",
+            "generated_at": datetime.now(_tz.utc).isoformat(),
+            "foam_version": job.get("foam_version", "13"),
+            "source_zip": source_zip,
+        },
+    }
+
+
+def _parse_of_dict_flat(path) -> dict:
+    """Parse a flat OpenFOAM dict file into {key: value_str}. Skips FoamFile header."""
+    path = Path(path)
+    if not path.exists():
+        return {}
+    text = path.read_text(errors="replace")
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    text = re.sub(r"//.*", "", text)
+    result: dict[str, Any] = {}
+    depth = 0
+    in_header = False
+    last_bare = ""
+    for line in text.splitlines():
+        s = line.strip()
+        if s == "{":
+            depth += 1
+            if depth == 1 and last_bare == "FoamFile":
+                in_header = True
+        elif s == "}":
+            depth -= 1
+            if depth == 0:
+                in_header = False
+        elif depth == 0 or (depth == 1 and not in_header):
+            m = re.match(r'^(\w+)\s+"?([^";{}\n]+?)"?\s*;', s)
+            if m:
+                result[m.group(1)] = m.group(2).strip()
+        bare = re.match(r'^(\w+)\s*$', s)
+        last_bare = bare.group(1) if bare else ""
+    return result
+
+
+def _extract_bcs_summary(root) -> dict:
+    """Return {patch: {field: {type, value}}} from 0/ field files."""
+    zero = Path(root) / "0"
+    if not zero.exists():
+        return {}
+    out: dict = {}
+    for ff in sorted(zero.iterdir()):
+        if ff.is_dir() or ff.name.startswith("."):
+            continue
+        text = ff.read_text(errors="replace")
+        text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+        text = re.sub(r"//.*", "", text)
+        for patch, bc_type, val_raw in re.findall(
+            r'(\w+)\s*\{[^}]*type\s+(\w+)\s*;(?:[^}]*value\s+([^;]+);)?',
+            text, re.DOTALL
+        ):
+            if patch in ("FoamFile", "boundaryField", "internalField"):
+                continue
+            out.setdefault(patch, {})[ff.name] = {
+                "type": bc_type,
+                "value": val_raw.strip() if val_raw else None,
+            }
+    return out
+
+
+def _detect_mesh_gen(root, job: dict) -> _Opt[str]:
+    pre = job.get("preprocess", [])
+    if "blockMesh" in pre or (Path(root) / "system" / "blockMeshDict").exists():
+        return "blockMesh"
+    if "snappyHexMesh" in pre or (Path(root) / "system" / "snappyHexMeshDict").exists():
+        return "snappyHexMesh"
+    if "foamMergeCase" in pre:
+        return "foamMergeCase"
+    return None
+
+
+def _to_num(val: _Opt[str]) -> _Opt[float]:
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
+def _nested_get(d: dict, *keys: str) -> _Opt[str]:
+    cur = d
+    for k in keys:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(k)
+    return cur if isinstance(cur, str) else None

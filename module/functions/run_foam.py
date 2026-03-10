@@ -20,6 +20,7 @@ from typing import List
 from module.functions.base.function_io import Output, OutputType
 from module.functions.registry import register
 from module.services.foam_utils import (
+    extract_inputs,
     infer_run_config,
     list_fields_at_time,
     list_time_dirs,
@@ -81,6 +82,35 @@ def run_foam(input_json: str, temp_dir: str) -> List[Output]:
             write_of_value(dp, "numberOfSubdomains", str(np_count))
         if np_count > 1:
             config["parallel"] = True
+
+    # --- inputs.json — snapshot parameters as they will actually run ---
+    inputs_path = None
+    try:
+        pre_steps = []
+        if config.get("run_blockmesh"):
+            pre_steps.append("blockMesh")
+        if config.get("run_snappy"):
+            pre_steps.append("snappyHexMesh")
+        if config.get("run_set_fields"):
+            pre_steps.append("setFields")
+        job = {
+            "case_name": case_name,
+            "solver_module": None,
+            "parallel": config.get("parallel", False),
+            "np": config.get("np", 1),
+            "preprocess": pre_steps,
+            "foam_version": "13",
+        }
+        inputs_data = extract_inputs(str(case_dir), job, Path(zip_path).name)
+        inputs_path = temp / "inputs.json"
+        inputs_path.write_text(json.dumps(inputs_data, indent=2))
+        log.info(
+            "inputs.json written (post-override): endTime=%s deltaT=%s",
+            inputs_data["time"].get("endTime"),
+            inputs_data["time"].get("deltaT"),
+        )
+    except Exception as e:
+        log.warning("extract_inputs failed, omitting inputs output: %s", e)
 
     # 5. Pre-processing
     poly_mesh = case_dir / "constant" / "polyMesh"
@@ -159,11 +189,14 @@ def run_foam(input_json: str, temp_dir: str) -> List[Output]:
 
     log.info("=== run_foam COMPLETE — converged=%s ===", report["converged"])
 
-    return [
+    outputs = [
         Output(name="solved_case", type=OutputType.FILE, path=str(Path(solved_zip_path).resolve())),
         Output(name="run_log", type=OutputType.FILE, path=str(solver_log.resolve())),
         Output(name="convergence_report", type=OutputType.FILE, path=str(convergence_path.resolve())),
     ]
+    if inputs_path is not None:
+        outputs.append(Output(name="inputs", type=OutputType.FILE, path=str(inputs_path.resolve())))
+    return outputs
 
 
 register("run_foam", run_foam)

@@ -17,6 +17,7 @@ from typing import List
 from module.functions.base.function_io import Output, OutputType
 from module.functions.registry import register
 from module.services.foam_utils import (
+    extract_inputs,
     infer_run_config,
     list_time_dirs,
     read_control_dict_values,
@@ -115,11 +116,42 @@ def inspect_foam(input_json: str, temp_dir: str) -> List[Output]:
     report_path = temp / "inspection_report.json"
     report_path.write_text(json.dumps(report, indent=2))
 
-    log.info("=== inspect_foam COMPLETE — structure_valid=%s ===", report["structure_valid"])
-
-    return [
+    # --- inputs.json ---
+    outputs = [
         Output(name="inspection_report", type=OutputType.FILE, path=str(report_path.resolve())),
     ]
+    try:
+        pre_steps = []
+        if run_config["run_blockmesh"]:
+            pre_steps.append("blockMesh")
+        if run_config["run_snappy"]:
+            pre_steps.append("snappyHexMesh")
+        if run_config["run_set_fields"]:
+            pre_steps.append("setFields")
+        job = {
+            "case_name": case_dir.name,
+            "solver_module": None,
+            "parallel": run_config.get("parallel", False),
+            "np": run_config.get("np", 1),
+            "preprocess": pre_steps,
+            "foam_version": "13",
+        }
+        inputs_data = extract_inputs(str(case_dir), job, Path(zip_path).name)
+        inputs_path = temp / "inputs.json"
+        inputs_path.write_text(json.dumps(inputs_data, indent=2))
+        log.info(
+            "inputs.json: endTime=%s deltaT=%s application=%s",
+            inputs_data["time"].get("endTime"),
+            inputs_data["time"].get("deltaT"),
+            inputs_data["solver"].get("application"),
+        )
+        outputs.append(Output(name="inputs", type=OutputType.FILE, path=str(inputs_path.resolve())))
+    except Exception as e:
+        log.warning("extract_inputs failed, omitting inputs output: %s", e)
+
+    log.info("=== inspect_foam COMPLETE — structure_valid=%s ===", report["structure_valid"])
+
+    return outputs
 
 
 register("inspect_foam", inspect_foam)

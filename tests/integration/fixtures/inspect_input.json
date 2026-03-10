@@ -1,0 +1,4 @@
+{
+  "foam_case": {"type": "user_model", "value": "tests/integration/fixtures/cavity_test.foam.zip"},
+  "run_checkmesh": {"type": "parameter", "value": false}
+}

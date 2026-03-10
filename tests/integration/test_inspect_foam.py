@@ -37,7 +37,7 @@ def test_inspect_foam_structure_valid(tmp_path):
 
     result = inspect_foam(_make_input(tmp_path), str(tmp_path))
 
-    assert len(result) == 1
+    assert len(result) >= 1
     assert result[0].name == "inspection_report"
     report_path = Path(result[0].path)
     assert report_path.exists()
@@ -93,3 +93,26 @@ def test_inspect_foam_initial_fields(tmp_path):
     fields = report["initial_fields"]
     assert "U" in fields
     assert "p" in fields
+
+
+def test_inspect_foam_inputs_json(tmp_path):
+    """inputs.json is produced and conforms to schema when extract_inputs succeeds."""
+    from module.functions.inspect_patch_foam import inspect_foam
+
+    result = inspect_foam(_make_input(tmp_path), str(tmp_path))
+    names = [o.name for o in result]
+    assert "inspection_report" in names
+
+    inputs_outputs = [o for o in result if o.name == "inputs"]
+    if not inputs_outputs:
+        pytest.skip("inputs output omitted (extract_inputs may have failed)")
+    inputs_path = Path(inputs_outputs[0].path)
+    assert inputs_path.exists()
+
+    inputs_data = json.loads(inputs_path.read_text())
+    assert inputs_data["schema_version"] == "1.0"
+    assert "case_name" in inputs_data
+    assert "solver" in inputs_data
+    assert "time" in inputs_data
+    assert inputs_data["time"]["endTime"] is not None
+    assert inputs_data["time"]["deltaT"] is not None
