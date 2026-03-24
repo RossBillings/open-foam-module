@@ -504,3 +504,182 @@ def compute_field_statistics(
             log.warning("Could not compute statistics for field %s at time %s", field_name, time)
 
     return stats
+
+
+# ---------------------------------------------------------------------------
+# Residual history parsing
+# ---------------------------------------------------------------------------
+
+def parse_residual_history(log_text: str) -> dict[str, list[tuple[float, float, float]]]:
+    """
+    Parse per-iteration initial and final residuals from a solver log.
+
+    Returns {field: [(time_step, initial_residual, final_residual), ...]}
+    Captures both residuals per iteration, enabling full convergence curves.
+    """
+    residuals: dict[str, list] = {}
+    current_time: float = 0.0
+    time_pat = re.compile(r"^Time = (\S+)$")
+    res_pat = re.compile(
+        r"Solving for (\w+),\s*Initial residual = ([0-9eE+\-.]+),\s*Final residual = ([0-9eE+\-.]+)"
+    )
+    for line in log_text.splitlines():
+        tm = time_pat.match(line)
+        if tm:
+            try:
+                current_time = float(tm.group(1))
+            except ValueError:
+                pass
+        rm = res_pat.search(line)
+        if rm:
+            field = rm.group(1)
+            init_res = float(rm.group(2))
+            final_res = float(rm.group(3))
+            residuals.setdefault(field, []).append((current_time, init_res, final_res))
+    return residuals
+
+
+# ---------------------------------------------------------------------------
+# Pure-regex field array parsing (no Ofpp required)
+# ---------------------------------------------------------------------------
+
+def parse_field_array(file_path: Path) -> tuple:
+    """
+    Parse the internalField of an OpenFOAM field file into a raw numpy array
+    without requiring the Ofpp library.
+
+    Handles:
+      - nonuniform List<vector> → np.ndarray shape (n, 3), type 'vector'
+      - nonuniform List<scalar> → np.ndarray shape (n,),   type 'scalar'
+      - uniform (x y z)         → np.ndarray shape (3,),   type 'vector'
+      - uniform value           → np.ndarray shape (1,),   type 'scalar'
+
+    Returns (array, field_type) or (None, None) if parsing fails.
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return None, None
+
+    text = file_path.read_text()
+
+    # Nonuniform vector
+    m = re.search(
+        r"internalField\s+nonuniform\s+List<vector>\s*\n\d+\s*\n\((.*?)\n\)",
+        text, re.DOTALL,
+    )
+    if m:
+        vectors = []
+        for line in m.group(1).strip().splitlines():
+            vm = re.match(
+                r"\(\s*([0-9eE+\-.]+)\s+([0-9eE+\-.]+)\s+([0-9eE+\-.]+)\s*\)",
+                line.strip(),
+            )
+            if vm:
+                vectors.append([float(vm.group(1)), float(vm.group(2)), float(vm.group(3))])
+        if vectors:
+            return np.array(vectors, dtype=float), "vector"
+
+    # Nonuniform scalar
+    m = re.search(
+        r"internalField\s+nonuniform\s+List<scalar>\s*\n\d+\s*\n\((.*?)\n\)",
+        text, re.DOTALL,
+    )
+    if m:
+        scalars = []
+        for line in m.group(1).strip().splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    scalars.append(float(line))
+                except ValueError:
+                    pass
+        if scalars:
+            return np.array(scalars, dtype=float), "scalar"
+
+    # Uniform vector
+    m = re.search(
+        r"internalField\s+uniform\s+\(\s*([0-9eE+\-.]+)\s+([0-9eE+\-.]+)\s+([0-9eE+\-.]+)\s*\)",
+        text,
+    )
+    if m:
+        vals = np.array([float(m.group(1)), float(m.group(2)), float(m.group(3))], dtype=float)
+        return vals, "vector"
+
+    # Uniform scalar
+    m = re.search(r"internalField\s+uniform\s+([0-9eE+\-.]+)", text)
+    if m:
+        return np.array([float(m.group(1))], dtype=float), "scalar"
+
+    return None, None
+
+
+# ---------------------------------------------------------------------------
+# checkMesh output parsing
+# ---------------------------------------------------------------------------
+
+def parse_checkmesh_output(log_text: str) -> dict[str, Any]:
+    """
+    Parse checkMesh log output for structured mesh quality metrics.
+
+    Returns dict with any of: cells, faces, points,
+    max_non_orthogonality, max_skewness, mesh_ok.
+
+    Uses line-start matching to avoid false positives from lines such as
+    "internal cells:" or "faces per cell:".
+    """
+    metrics: dict[str, Any] = {"mesh_ok": False}
+
+    for line in log_text.splitlines():
+        stripped = line.strip()
+
+        if stripped.startswith("cells:"):
+            m = re.search(r"cells:\s+(\d+)", stripped)
+            if m:
+                metrics["cells"] = int(m.group(1))
+        elif stripped.startswith("faces:"):
+            m = re.search(r"faces:\s+(\d+)", stripped)
+            if m:
+                metrics["faces"] = int(m.group(1))
+        elif stripped.startswith("points:"):
+            m = re.search(r"points:\s+(\d+)", stripped)
+            if m:
+                metrics["points"] = int(m.group(1))
+
+        if "non-orthogonality" in line.lower():
+            m = re.search(r"non-orthogonality\s+Max:\s*([0-9eE+\-.]+)", line, re.IGNORECASE)
+            if m:
+                metrics["max_non_orthogonality"] = float(m.group(1))
+            m2 = re.search(r"Max non-orthogonality\s*=\s*([0-9eE+\-.]+)", line)
+            if m2:
+                metrics["max_non_orthogonality"] = float(m2.group(1))
+
+        if "Max skewness" in line:
+            m = re.search(r"Max skewness\s*=\s*([0-9eE+\-.]+)", line)
+            if m:
+                metrics["max_skewness"] = float(m.group(1))
+
+        if "Mesh OK" in line:
+            metrics["mesh_ok"] = True
+
+    return metrics
+
+
+# ---------------------------------------------------------------------------
+# blockMeshDict dimension extraction
+# ---------------------------------------------------------------------------
+
+def read_blockmesh_dims(case_dir: Path) -> tuple[int, int, int] | None:
+    """
+    Extract cell counts (nx, ny, nz) from system/blockMeshDict.
+
+    Looks for the first `hex (...) (nx ny nz)` entry.
+    Returns (nx, ny, nz) or None if the file is absent or unparseable.
+    """
+    bmd = case_dir / "system" / "blockMeshDict"
+    if not bmd.exists():
+        return None
+    m = re.search(r"hex\s*\([^)]+\)\s*\((\d+)\s+(\d+)\s+(\d+)\)", bmd.read_text())
+    if m:
+        return int(m.group(1)), int(m.group(2)), int(m.group(3))
+    return None

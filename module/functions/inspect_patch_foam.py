@@ -19,6 +19,7 @@ from module.functions.registry import register
 from module.services.foam_utils import (
     infer_run_config,
     list_time_dirs,
+    parse_checkmesh_output,
     read_control_dict_values,
     run_cmd,
     unzip_case,
@@ -26,6 +27,7 @@ from module.services.foam_utils import (
     write_of_value,
     zip_case,
 )
+from module.services.foam_viz import plot_mesh_quality
 
 log = logging.getLogger(__name__)
 
@@ -97,20 +99,24 @@ def inspect_foam(input_json: str, temp_dir: str) -> List[Output]:
     report["already_solved"] = len(time_dirs) > 1
 
     # checkMesh (optional)
+    artifacts: List[Output] = []
     if run_checkmesh and report["mesh_present"]:
         rc, output = run_cmd(
             "checkMesh", cwd=case_dir, log_file=log_dir / "checkMesh.log"
         )
         report["checkmesh_returncode"] = rc
-        report["checkmesh_summary"] = [
-            line.strip() for line in output.splitlines()
-            if any(kw in line for kw in [
-                "cells:", "faces:", "points:", "Max skewness",
-                "Max aspect ratio", "Mesh OK", "FAILED",
-            ])
-        ]
+        checkmesh_data = parse_checkmesh_output(output)
+        report["checkmesh_metrics"] = checkmesh_data
+
+        png_path = temp / "checkmesh_quality.png"
+        if plot_mesh_quality(checkmesh_data, str(png_path)):
+            artifacts.append(Output(
+                name="checkmesh_quality",
+                type=OutputType.FILE,
+                path=str(png_path.resolve()),
+            ))
     elif run_checkmesh:
-        report["checkmesh_summary"] = ["Skipped — no mesh present"]
+        report["checkmesh_metrics"] = {}
 
     report_path = temp / "inspection_report.json"
     report_path.write_text(json.dumps(report, indent=2))
@@ -119,6 +125,7 @@ def inspect_foam(input_json: str, temp_dir: str) -> List[Output]:
 
     return [
         Output(name="inspection_report", type=OutputType.FILE, path=str(report_path.resolve())),
+        *artifacts,
     ]
 
 

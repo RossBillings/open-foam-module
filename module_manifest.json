@@ -3,7 +3,7 @@
   "module_name": "@istari:openfoam",
   "module_display_name": "OpenFOAM v13 Solver",
   "module_type": "function",
-  "module_version": "0.3.0",
+  "module_version": "0.4.0",
   "module_checksum": "hash",
   "internal": true,
   "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04", "RHEL 9"],
@@ -130,6 +130,13 @@
               "required": true,
               "display_name": "Inspection Report (JSON)",
               "upload_as": "artifact"
+            },
+            {
+              "name": "checkmesh_quality",
+              "type": "file",
+              "required": false,
+              "display_name": "Mesh Quality Plot (PNG)",
+              "upload_as": "artifact"
             }
           ]
         }
@@ -157,6 +164,27 @@
               "type": "file",
               "required": true,
               "display_name": "Extraction Report (JSON)",
+              "upload_as": "artifact"
+            },
+            {
+              "name": "residual_history",
+              "type": "file",
+              "required": false,
+              "display_name": "Residual History (CSV)",
+              "upload_as": "artifact"
+            },
+            {
+              "name": "convergence_plot",
+              "type": "file",
+              "required": false,
+              "display_name": "Convergence Plot (PNG)",
+              "upload_as": "artifact"
+            },
+            {
+              "name": "field_statistics",
+              "type": "file",
+              "required": false,
+              "display_name": "Field Statistics (CSV)",
               "upload_as": "artifact"
             }
           ]

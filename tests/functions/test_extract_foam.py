@@ -350,3 +350,117 @@ def test_to_number_returns_string_for_keyword_values():
     # Arrange / Act / Assert — OpenFOAM keywords like startTime should pass through
     assert _to_number("startTime") == "startTime"
     assert _to_number("endTime") == "endTime"
+
+
+# ---------------------------------------------------------------------------
+# _extract_outputs (solved case artifacts)
+# ---------------------------------------------------------------------------
+
+from module.functions.extract_foam import _extract_outputs  # noqa: E402
+
+FOAM_LOG = """\
+Time = 0.1
+Solving for Ux, Initial residual = 0.5, Final residual = 0.05, No Iterations 10
+Solving for p, Initial residual = 0.3, Final residual = 0.03, No Iterations 5
+Time = 0.5
+Solving for Ux, Initial residual = 0.1, Final residual = 0.01, No Iterations 10
+Solving for p, Initial residual = 0.05, Final residual = 0.005, No Iterations 5
+ExecutionTime = 2.5
+"""
+
+BLOCKMESH_DICT = """\
+FoamFile { object blockMeshDict; }
+blocks
+(
+    hex (0 1 2 3 4 5 6 7) (2 2 1) simpleGrading (1 1 1)
+);
+"""
+
+
+def _build_solved_case(tmp_path: Path) -> Path:
+    """Build a minimal solved OpenFOAM case directory."""
+    case = tmp_path / "cavity"
+    for d in ("0", "0.1", "0.5", "constant", "system"):
+        (case / d).mkdir(parents=True)
+
+    # controlDict
+    (case / "system" / "controlDict").write_text(
+        "application foamRun;\nstartTime 0;\nendTime 0.5;\ndeltaT 0.1;\nwriteInterval 0.1;\n"
+    )
+    (case / "system" / "fvSchemes").write_text("")
+    (case / "system" / "fvSolution").write_text("")
+    (case / "system" / "blockMeshDict").write_text(BLOCKMESH_DICT)
+
+    # Solver log
+    (case / "foamRun.log").write_text(FOAM_LOG)
+
+    # Scalar field p at final time (2x2=4 cells)
+    p_text = (
+        "FoamFile { class volScalarField; object p; }\n"
+        "internalField   nonuniform List<scalar>\n4\n(\n1.0\n2.0\n3.0\n4.0\n);\n"
+        "boundaryField {}\n"
+    )
+    (case / "0.5" / "p").write_text(p_text)
+
+    # Vector field U at final time (2x2=4 cells)
+    u_text = (
+        "FoamFile { class volVectorField; object U; }\n"
+        "internalField   nonuniform List<vector>\n4\n(\n(1 0 0)\n(2 0 0)\n(1 0 0)\n(2 0 0)\n);\n"
+        "boundaryField {}\n"
+    )
+    (case / "0.5" / "U").write_text(u_text)
+
+    return case
+
+
+def test_extract_outputs_returns_residual_csv(tmp_path):
+    case = _build_solved_case(tmp_path)
+    _, artifacts = _extract_outputs(case, ["0", "0.1", "0.5"], tmp_path)
+    names = [a.name for a in artifacts]
+    assert "residual_history" in names
+
+
+def test_extract_outputs_residual_csv_file_exists(tmp_path):
+    case = _build_solved_case(tmp_path)
+    _, artifacts = _extract_outputs(case, ["0", "0.1", "0.5"], tmp_path)
+    csv_artifact = next(a for a in artifacts if a.name == "residual_history")
+    assert Path(csv_artifact.path).exists()
+
+
+def test_extract_outputs_convergence_plot_produced(tmp_path):
+    case = _build_solved_case(tmp_path)
+    _, artifacts = _extract_outputs(case, ["0", "0.1", "0.5"], tmp_path)
+    names = [a.name for a in artifacts]
+    assert "convergence_plot" in names
+
+
+def test_extract_outputs_field_statistics_csv(tmp_path):
+    case = _build_solved_case(tmp_path)
+    _, artifacts = _extract_outputs(case, ["0", "0.1", "0.5"], tmp_path)
+    names = [a.name for a in artifacts]
+    assert "field_statistics" in names
+
+
+def test_extract_outputs_contour_plots_produced(tmp_path):
+    case = _build_solved_case(tmp_path)
+    _, artifacts = _extract_outputs(case, ["0", "0.1", "0.5"], tmp_path)
+    names = [a.name for a in artifacts]
+    assert "p_contour" in names
+    assert "U_contour" in names
+
+
+def test_extract_outputs_data_has_time_directories(tmp_path):
+    case = _build_solved_case(tmp_path)
+    data, _ = _extract_outputs(case, ["0", "0.1", "0.5"], tmp_path)
+    assert data["time_directories"] == ["0", "0.1", "0.5"]
+    assert data["final_time"] == "0.5"
+
+
+def test_extract_outputs_no_log_skips_residuals(tmp_path):
+    """When foamRun.log is absent, no residual CSV or convergence plot artifacts."""
+    case = _build_solved_case(tmp_path)
+    (case / "foamRun.log").unlink()
+    _, artifacts = _extract_outputs(case, ["0", "0.5"], tmp_path)
+    names = [a.name for a in artifacts]
+    assert "residual_history" not in names
+    assert "convergence_plot" not in names

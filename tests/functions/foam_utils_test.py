@@ -438,3 +438,209 @@ def test_run_cmd_returns_nonzero_returncode_on_failure(tmp_path):
 
     # Assert
     assert rc != 0
+
+
+# ---------------------------------------------------------------------------
+# parse_residual_history
+# ---------------------------------------------------------------------------
+
+from module.services.foam_utils import parse_residual_history  # noqa: E402
+
+RESIDUAL_LOG = """\
+Time = 0.1
+Solving for Ux, Initial residual = 0.5, Final residual = 0.05, No Iterations 10
+Solving for p, Initial residual = 0.3, Final residual = 0.03, No Iterations 5
+Time = 0.2
+Solving for Ux, Initial residual = 0.25, Final residual = 0.025, No Iterations 10
+Solving for p, Initial residual = 0.15, Final residual = 0.015, No Iterations 5
+"""
+
+
+def test_parse_residual_history_captures_fields():
+    result = parse_residual_history(RESIDUAL_LOG)
+    assert "Ux" in result
+    assert "p" in result
+
+
+def test_parse_residual_history_correct_iteration_count():
+    result = parse_residual_history(RESIDUAL_LOG)
+    assert len(result["Ux"]) == 2
+    assert len(result["p"]) == 2
+
+
+def test_parse_residual_history_correct_values():
+    result = parse_residual_history(RESIDUAL_LOG)
+    time_step, init_res, final_res = result["Ux"][0]
+    assert time_step == pytest.approx(0.1)
+    assert init_res == pytest.approx(0.5)
+    assert final_res == pytest.approx(0.05)
+
+
+def test_parse_residual_history_empty_log():
+    assert parse_residual_history("") == {}
+
+
+def test_parse_residual_history_no_time_uses_zero():
+    log = "Solving for Ux, Initial residual = 0.5, Final residual = 0.05, No Iterations 10\n"
+    result = parse_residual_history(log)
+    assert result["Ux"][0][0] == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# parse_field_array
+# ---------------------------------------------------------------------------
+
+from module.services.foam_utils import parse_field_array  # noqa: E402
+
+
+def test_parse_field_array_nonuniform_scalar(tmp_path):
+    f = tmp_path / "p"
+    f.write_text(
+        "FoamFile {}\n"
+        "internalField   nonuniform List<scalar>\n3\n(\n1.0\n2.0\n3.0\n);\n"
+    )
+    arr, ftype = parse_field_array(f)
+    assert ftype == "scalar"
+    assert arr.shape == (3,)
+    assert arr[1] == pytest.approx(2.0)
+
+
+def test_parse_field_array_nonuniform_vector(tmp_path):
+    f = tmp_path / "U"
+    f.write_text(
+        "FoamFile {}\n"
+        "internalField   nonuniform List<vector>\n2\n(\n(1.0 0.0 0.0)\n(2.0 0.0 0.0)\n);\n"
+    )
+    arr, ftype = parse_field_array(f)
+    assert ftype == "vector"
+    assert arr.shape == (2, 3)
+    assert arr[1, 0] == pytest.approx(2.0)
+
+
+def test_parse_field_array_uniform_scalar(tmp_path):
+    f = tmp_path / "p"
+    f.write_text("FoamFile {}\ninternalField   uniform 5.0;\n")
+    arr, ftype = parse_field_array(f)
+    assert ftype == "scalar"
+    assert arr[0] == pytest.approx(5.0)
+
+
+def test_parse_field_array_uniform_vector(tmp_path):
+    f = tmp_path / "U"
+    f.write_text("FoamFile {}\ninternalField   uniform (1.0 2.0 3.0);\n")
+    arr, ftype = parse_field_array(f)
+    assert ftype == "vector"
+    assert arr.shape == (3,)
+    assert arr[1] == pytest.approx(2.0)
+
+
+def test_parse_field_array_unrecognised_returns_none(tmp_path):
+    f = tmp_path / "p"
+    f.write_text("FoamFile {}\n# no internalField\n")
+    arr, ftype = parse_field_array(f)
+    assert arr is None
+    assert ftype is None
+
+
+# ---------------------------------------------------------------------------
+# parse_checkmesh_output
+# ---------------------------------------------------------------------------
+
+from module.services.foam_utils import parse_checkmesh_output  # noqa: E402
+
+CHECKMESH_LOG = """\
+Mesh stats
+    points:           1100
+    faces:            4000
+    cells:            1000
+    internal faces:   3000
+    boundary patches: 5
+Checking geometry...
+    Max skewness = 0.842
+    Mesh non-orthogonality Max: 45.2 average: 10.3
+Mesh OK.
+"""
+
+
+def test_parse_checkmesh_output_cells():
+    result = parse_checkmesh_output(CHECKMESH_LOG)
+    assert result["cells"] == 1000
+
+
+def test_parse_checkmesh_output_faces():
+    result = parse_checkmesh_output(CHECKMESH_LOG)
+    assert result["faces"] == 4000
+
+
+def test_parse_checkmesh_output_points():
+    result = parse_checkmesh_output(CHECKMESH_LOG)
+    assert result["points"] == 1100
+
+
+def test_parse_checkmesh_output_skewness():
+    result = parse_checkmesh_output(CHECKMESH_LOG)
+    assert result["max_skewness"] == pytest.approx(0.842)
+
+
+def test_parse_checkmesh_output_non_orthogonality():
+    result = parse_checkmesh_output(CHECKMESH_LOG)
+    assert result["max_non_orthogonality"] == pytest.approx(45.2)
+
+
+def test_parse_checkmesh_output_mesh_ok_true():
+    result = parse_checkmesh_output(CHECKMESH_LOG)
+    assert result["mesh_ok"] is True
+
+
+def test_parse_checkmesh_output_mesh_ok_false():
+    result = parse_checkmesh_output("cells: 100\n")
+    assert result["mesh_ok"] is False
+
+
+def test_parse_checkmesh_output_empty_log():
+    result = parse_checkmesh_output("")
+    assert result == {"mesh_ok": False}
+
+
+def test_parse_checkmesh_output_internal_cells_not_captured():
+    """'internal cells:' should NOT be captured as cells count."""
+    log = "    internal cells:   900\n    cells:  1000\n"
+    result = parse_checkmesh_output(log)
+    assert result.get("cells") == 1000
+
+
+# ---------------------------------------------------------------------------
+# read_blockmesh_dims
+# ---------------------------------------------------------------------------
+
+from module.services.foam_utils import read_blockmesh_dims  # noqa: E402
+
+BLOCKMESH_DICT = """\
+FoamFile { object blockMeshDict; }
+blocks
+(
+    hex (0 1 2 3 4 5 6 7) (20 10 1) simpleGrading (1 1 1)
+);
+"""
+
+
+def test_read_blockmesh_dims_returns_tuple(tmp_path):
+    case = tmp_path / "cavity"
+    (case / "system").mkdir(parents=True)
+    (case / "system" / "blockMeshDict").write_text(BLOCKMESH_DICT)
+    result = read_blockmesh_dims(case)
+    assert result == (20, 10, 1)
+
+
+def test_read_blockmesh_dims_missing_file_returns_none(tmp_path):
+    case = tmp_path / "cavity"
+    case.mkdir()
+    (case / "system").mkdir()
+    assert read_blockmesh_dims(case) is None
+
+
+def test_read_blockmesh_dims_no_hex_entry_returns_none(tmp_path):
+    case = tmp_path / "cavity"
+    (case / "system").mkdir(parents=True)
+    (case / "system" / "blockMeshDict").write_text("FoamFile {}\nblocks ();\n")
+    assert read_blockmesh_dims(case) is None
