@@ -9,6 +9,7 @@ Covers:
 - unzip_case()
 """
 
+import json
 import zipfile
 from pathlib import Path
 
@@ -16,11 +17,16 @@ import pytest
 
 from module.services.foam_utils import (
     infer_run_config,
-    read_of_value,
+    list_fields_at_time,
+    parse_of_field_file,
     parse_solver_log,
+    read_input,
+    read_of_value,
+    run_cmd,
     unzip_case,
     validate_case_structure,
     write_of_value,
+    write_output,
 )
 
 
@@ -297,3 +303,138 @@ def test_unzip_case_macosx_with_flat_structure(tmp_path):
 
     result = unzip_case(str(zip_path), str(tmp_path / "out"))
     assert (result / "system" / "controlDict").exists()
+
+
+def test_unzip_case_raises_value_error_for_unrecognized_structure(tmp_path):
+    """Zip with no recognisable OF case root raises ValueError."""
+    zip_path = tmp_path / "bad.foam.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("random_file.txt", "not an OpenFOAM case")
+
+    with pytest.raises(ValueError, match="Could not locate"):
+        unzip_case(str(zip_path), str(tmp_path / "out"))
+
+
+# ---------------------------------------------------------------------------
+# read_input / write_output
+# ---------------------------------------------------------------------------
+
+def test_read_input_returns_parsed_json(tmp_path):
+    # Arrange
+    data = {"key": "value", "num": 42}
+    f = tmp_path / "input.json"
+    f.write_text(json.dumps(data))
+
+    # Act
+    result = read_input(str(f))
+
+    # Assert
+    assert result == data
+
+
+def test_write_output_creates_file_with_correct_json(tmp_path):
+    # Arrange
+    data = {"result": "ok", "count": 3}
+    f = tmp_path / "output.json"
+
+    # Act
+    write_output(str(f), data)
+
+    # Assert
+    assert f.exists()
+    assert json.loads(f.read_text()) == data
+
+
+# ---------------------------------------------------------------------------
+# list_fields_at_time
+# ---------------------------------------------------------------------------
+
+def test_list_fields_at_time_returns_empty_for_nonexistent_time_dir(tmp_path):
+    # Arrange — no "0.5" subdirectory exists
+
+    # Act
+    result = list_fields_at_time(tmp_path, "0.5")
+
+    # Assert
+    assert result == []
+
+
+# ---------------------------------------------------------------------------
+# parse_of_field_file — no boundaryField
+# ---------------------------------------------------------------------------
+
+def test_parse_of_field_file_returns_empty_boundaries_when_no_boundary_field(tmp_path):
+    # Arrange
+    f = tmp_path / "p"
+    f.write_text("dimensions [0 2 -2 0 0 0 0];\ninternalField uniform 0;\n")
+
+    # Act
+    result = parse_of_field_file(f)
+
+    # Assert
+    assert result["boundaries"] == {}
+
+
+def test_parse_of_field_file_returns_none_internal_field_when_absent(tmp_path):
+    # Arrange — field file with no internalField key
+    f = tmp_path / "p"
+    f.write_text("dimensions [0 2 -2 0 0 0 0];\n")
+
+    # Act
+    result = parse_of_field_file(f)
+
+    # Assert
+    assert result["internal_field"] is None
+
+
+# ---------------------------------------------------------------------------
+# infer_run_config — non-integer numberOfSubdomains
+# ---------------------------------------------------------------------------
+
+def test_infer_run_config_non_integer_np_defaults_to_serial(tmp_path):
+    """Non-integer numberOfSubdomains (e.g. 'scotch') falls back to np=1, parallel=False."""
+    # Arrange
+    case = tmp_path / "cavity"
+    _make_minimal_case(case)
+    (case / "system" / "decomposeParDict").write_text("numberOfSubdomains scotch;\n")
+
+    # Act
+    config = infer_run_config(case)
+
+    # Assert
+    assert config["np"] == 1
+    assert config["parallel"] is False
+
+
+# ---------------------------------------------------------------------------
+# run_cmd
+# ---------------------------------------------------------------------------
+
+def test_run_cmd_returns_zero_returncode_and_output(tmp_path):
+    # Arrange / Act
+    rc, output = run_cmd("echo hello", cwd=tmp_path)
+
+    # Assert
+    assert rc == 0
+    assert "hello" in output
+
+
+def test_run_cmd_writes_output_to_log_file(tmp_path):
+    # Arrange
+    log_f = tmp_path / "test.log"
+
+    # Act
+    rc, _ = run_cmd("echo world", cwd=tmp_path, log_file=log_f)
+
+    # Assert
+    assert rc == 0
+    assert log_f.exists()
+    assert "world" in log_f.read_text()
+
+
+def test_run_cmd_returns_nonzero_returncode_on_failure(tmp_path):
+    # Arrange / Act
+    rc, _ = run_cmd("false", cwd=tmp_path)
+
+    # Assert
+    assert rc != 0

@@ -314,3 +314,39 @@ def test_compute_field_statistics_multiple_fields(tmp_path):
     stats = compute_field_statistics(case, "1.0", ["p", "U"])
     assert "p" in stats
     assert "U" in stats
+
+
+# ---------------------------------------------------------------------------
+# _to_number (private helper in extract_foam)
+# ---------------------------------------------------------------------------
+
+from module.functions.extract_foam import _to_number  # noqa: E402
+
+
+@pytest.mark.parametrize("value, expected", [
+    ("1.0", 1),
+    ("1.5", 1.5),
+    ("-3", -3),
+    ("0", 0),
+])
+def test_to_number_converts_numeric_strings(value, expected):
+    assert _to_number(value) == expected
+
+
+def test_to_number_returns_none_for_none_input():
+    # Arrange / Act / Assert
+    assert _to_number(None) is None
+
+
+def test_to_number_returns_string_for_non_numeric_value():
+    # Arrange / Act
+    result = _to_number("latestTime")
+
+    # Assert — non-numeric strings returned as-is
+    assert result == "latestTime"
+
+
+def test_to_number_returns_string_for_keyword_values():
+    # Arrange / Act / Assert — OpenFOAM keywords like startTime should pass through
+    assert _to_number("startTime") == "startTime"
+    assert _to_number("endTime") == "endTime"
