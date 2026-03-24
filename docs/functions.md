@@ -66,31 +66,34 @@ Example `convergence_report.json`:
 
 **What it does:** Lightweight pre-flight check — no solving.
 1. Unzips case, validates directory structure
-2. Reads `foam_job.json` and `controlDict` values
+2. Reads `controlDict` values and infers run config (pre-processing steps, parallel settings)
 3. Reports mesh presence, `blockMeshDict`, `decomposeParDict`
 4. Lists initial fields (`0/`) and existing time directories
-5. Optionally runs `checkMesh` and captures key mesh quality lines
+5. Optionally runs `checkMesh`, parses structured quality metrics, and generates a mesh quality plot
 
 **Inputs:**
 
 | Name | Type | Required | Description |
 |---|---|---|---|
 | `foam_case` | `user_model` (`@extension:zip`) | Yes | OpenFOAM case archive (`.foam.zip`) |
-| `run_checkmesh` | `parameter` (`@boolean`) | No | Run `checkMesh` utility and include summary in report |
+| `run_checkmesh` | `parameter` (`@boolean`) | No | Run `checkMesh` utility and include structured metrics + quality plot |
 
 **Artifacts:**
 
 | Name | Required | Description |
 |---|---|---|
-| `inspection_report` | Yes | `inspection_report.json` — structure validity, job config, controlDict, mesh status, initial fields, whether already solved, optional checkMesh summary |
+| `inspection_report` | Yes | `inspection_report.json` — structure validity, controlDict, mesh status, initial fields, whether already solved, optional `checkmesh_metrics` dict |
+| `checkmesh_quality` | No | `checkmesh_quality.png` — bar chart (cells/faces/points) + quality metrics table; only when `run_checkmesh: true` and a mesh is present |
 
 Example `inspection_report.json`:
 ```json
 {
   "structure_issues": [],
   "structure_valid": true,
-  "foam_job": {"case_name": "cavity", "foam_version": "13", "solver_module": "incompressibleFluid"},
   "control_dict": {"application": "foamRun", "endTime": "0.5", "deltaT": "0.005"},
+  "pre_processing_detected": ["blockMesh"],
+  "parallel_detected": false,
+  "np_detected": 1,
   "mesh_present": false,
   "blockmeshdict_present": true,
   "decompose_par_dict_present": false,
@@ -100,7 +103,21 @@ Example `inspection_report.json`:
 }
 ```
 
-When `run_checkmesh: true` and a mesh exists, `checkmesh_returncode` and `checkmesh_summary` are also included.
+When `run_checkmesh: true` and a mesh exists, `checkmesh_returncode` and `checkmesh_metrics` are also included:
+
+```json
+{
+  "checkmesh_returncode": 0,
+  "checkmesh_metrics": {
+    "cells": 1000,
+    "faces": 4000,
+    "points": 1200,
+    "max_non_orthogonality": 45.2,
+    "max_skewness": 0.8,
+    "mesh_ok": true
+  }
+}
+```
 
 ---
 
@@ -149,11 +166,11 @@ If a patch fails (key not found, file not found), `success` is `false` and `reas
 
 ## `extract_foam` — Extract OpenFOAM Case Data
 
-**What it does:** Extracts structured JSON data from an OpenFOAM case (solved or unsolved) without running the solver.
+**What it does:** Extracts structured data and visualizations from an OpenFOAM case (solved or unsolved) without running the solver.
 1. Unzips the case archive
 2. Always extracts the `inputs` section: solver, time controls, parallel config, pre-processing flags, initial conditions, physical properties, and turbulence settings
 3. Determines whether the case is solved (`solved: true` when more than one time directory is present)
-4. If solved, also extracts the `outputs` section: time directories, field list at final time, convergence data from `foamRun.log`, and field statistics (min/max/mean via Ofpp)
+4. If solved, also extracts the `outputs` section and generates CSV/PNG artifacts: per-iteration residual history, convergence plot, field statistics, and 2D field contour plots
 
 **Inputs:**
 
@@ -166,6 +183,10 @@ If a patch fails (key not found, file not found), `success` is `false` and `reas
 | Name | Required | Description |
 |---|---|---|
 | `extraction_report` | Yes | `extraction_report.json` — structured report with `inputs` always present and `outputs` populated only when solved |
+| `residual_history` | No | `residual_history.csv` — per-iteration initial & final residuals (columns: `time_step`, `field`, `initial_residual`, `final_residual`); only when solved and `foamRun.log` is present |
+| `convergence_plot` | No | `convergence_plot.png` — semilogy convergence history chart per field; only when residual history is available |
+| `field_statistics` | No | `field_statistics.csv` — min/max/mean per field and component (columns: `field`, `component`, `min`, `max`, `mean`); only when solved |
+| `{field}_contour` | No | `{field}_contour.png` — 2D filled contour per field at final time; only when solved and `blockMeshDict` cell counts are available |
 
 **Report structure:**
 
@@ -248,5 +269,7 @@ When `solved: true`, the `outputs` section is populated:
 **Notes:**
 - Physical properties are read from `constant/physicalProperties` (OpenFOAM v13) or `constant/transportProperties` (older versions), with `constant/phaseProperties` also checked for multiphase VoF cases
 - Turbulence settings are read from `constant/momentumTransport` (OpenFOAM v13) or `constant/turbulenceProperties` (older versions)
-- Field statistics require `Ofpp` and `numpy`; if unavailable, `field_statistics` will be `{}`
-- `convergence` is only populated if `foamRun.log` exists in the case root
+- Field statistics use `Ofpp` when available, falling back to a pure-regex parser; `field_statistics` will be `{}` only if both are unavailable
+- Contour plots require `blockMeshDict` with a `hex` block entry to determine grid dimensions (nx, ny); skipped silently if absent
+- `residual_history`, `convergence_plot`, and the `convergence` key in the report are only populated if `foamRun.log` exists in the case root
+- Contour plots and field statistics CSVs require `matplotlib` and `numpy`
