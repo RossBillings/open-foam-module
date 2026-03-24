@@ -56,8 +56,9 @@ def run_foam(input_json: str, temp_dir: str) -> List[Output]:
 
     log.info("=== run_foam START ===")
 
-    # 1. Unzip
-    case_dir = unzip_case(zip_path, str(temp / "case"))
+    # 1. Unzip — use zip filename as dest dir so case_dir.name is meaningful
+    case_name_hint = Path(zip_path).name.split(".")[0] or "case"
+    case_dir = unzip_case(zip_path, str(temp / case_name_hint))
     case_name = case_dir.name
 
     # 2. Infer run config from standard OpenFOAM files

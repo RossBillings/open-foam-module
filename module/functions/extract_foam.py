@@ -69,7 +69,8 @@ def extract_foam(input_json: str, temp_dir: str) -> List[Output]:
 
     log.info("=== extract_foam START ===")
 
-    case_dir = unzip_case(zip_path, str(temp / "case"))
+    case_name_hint = Path(zip_path).name.split(".")[0] or "case"
+    case_dir = unzip_case(zip_path, str(temp / case_name_hint))
 
     report: dict[str, Any] = {
         "case_name": case_dir.name,

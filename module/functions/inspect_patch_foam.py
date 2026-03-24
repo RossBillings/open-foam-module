@@ -56,7 +56,8 @@ def inspect_foam(input_json: str, temp_dir: str) -> List[Output]:
 
     log.info("=== inspect_foam START ===")
 
-    case_dir = unzip_case(zip_path, str(temp / "case"))
+    case_name_hint = Path(zip_path).name.split(".")[0] or "case"
+    case_dir = unzip_case(zip_path, str(temp / case_name_hint))
     report: dict = {}
 
     # Structure
@@ -163,7 +164,8 @@ def update_foam(input_json: str, temp_dir: str) -> List[Output]:
 
     log.info("=== update_foam START === (%d patches)", len(patches))
 
-    case_dir = unzip_case(zip_path, str(temp / "case"))
+    case_name_hint = Path(zip_path).name.split(".")[0] or "case"
+    case_dir = unzip_case(zip_path, str(temp / case_name_hint))
 
     # Apply OF dict patches
     patch_report = []
