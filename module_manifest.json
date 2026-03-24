@@ -3,7 +3,7 @@
   "module_name": "@istari:openfoam",
   "module_display_name": "OpenFOAM v13 Solver",
   "module_type": "function",
-  "module_version": "0.2.0",
+  "module_version": "0.3.0",
   "module_checksum": "hash",
   "internal": true,
   "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04", "RHEL 9"],
@@ -129,6 +129,34 @@
               "type": "file",
               "required": true,
               "display_name": "Inspection Report (JSON)",
+              "upload_as": "artifact"
+            }
+          ]
+        }
+      }
+    ],
+    "@istari:extract_foam": [
+      {
+        "display_name": "Extract OpenFOAM Case Data",
+        "entrypoint": "openfoam_module",
+        "run_command": "{entrypoint} extract_foam --input-file {input_file} --output-file {output_file} --temp-dir {temp_dir} --config-path {config_path}",
+        "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04", "RHEL 9"],
+        "tool_versions": ["13"],
+        "function_schema": {
+          "inputs": {
+            "foam_case": {
+              "type": "user_model",
+              "validation_types": ["@extension:zip"],
+              "display_name": "OpenFOAM Case (.foam.zip)",
+              "optional": false
+            }
+          },
+          "outputs": [
+            {
+              "name": "extraction_report",
+              "type": "file",
+              "required": true,
+              "display_name": "Extraction Report (JSON)",
               "upload_as": "artifact"
             }
           ]
