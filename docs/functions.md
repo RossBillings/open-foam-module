@@ -144,3 +144,109 @@ Example `patch_report.json`:
 ```
 
 If a patch fails (key not found, file not found), `success` is `false` and `reason` explains why. Failed patches do not abort the run — the report captures all outcomes.
+
+---
+
+## `extract_foam` — Extract OpenFOAM Case Data
+
+**What it does:** Extracts structured JSON data from an OpenFOAM case (solved or unsolved) without running the solver.
+1. Unzips the case archive
+2. Always extracts the `inputs` section: solver, time controls, parallel config, pre-processing flags, initial conditions, physical properties, and turbulence settings
+3. Determines whether the case is solved (`solved: true` when more than one time directory is present)
+4. If solved, also extracts the `outputs` section: time directories, field list at final time, convergence data from `foamRun.log`, and field statistics (min/max/mean via Ofpp)
+
+**Inputs:**
+
+| Name | Type | Required | Description |
+|---|---|---|---|
+| `foam_case` | `user_model` (`@extension:zip`) | Yes | OpenFOAM case archive (`.foam.zip`) — solved or unsolved |
+
+**Artifacts:**
+
+| Name | Required | Description |
+|---|---|---|
+| `extraction_report` | Yes | `extraction_report.json` — structured report with `inputs` always present and `outputs` populated only when solved |
+
+**Report structure:**
+
+```json
+{
+  "case_name": "cavity",
+  "solved": false,
+  "inputs": {
+    "solver": "foamRun",
+    "time_control": {
+      "start_time": 0,
+      "end_time": 0.5,
+      "delta_t": 0.005,
+      "write_interval": 0.1,
+      "start_from": "startTime",
+      "stop_at": "endTime"
+    },
+    "parallel": {
+      "enabled": false,
+      "n_processors": 1,
+      "decompose_method": null
+    },
+    "preprocessing": {
+      "blockMesh": true,
+      "snappyHexMesh": false,
+      "setFields": false
+    },
+    "initial_conditions": {
+      "U": {
+        "dimensions": "[0 1 -1 0 0 0 0]",
+        "internal_field": "uniform (0 0 0)",
+        "boundaries": {
+          "movingWall": {"type": "fixedValue", "value": "uniform ( 1 0 0 )"},
+          "fixedWalls": {"type": "noSlip"}
+        }
+      },
+      "p": {"dimensions": "[0 2 -2 0 0 0 0]", "internal_field": "uniform 0", "boundaries": {}}
+    },
+    "physical_properties": {
+      "nu": "1e-05",
+      "viscosityModel": "constant"
+    },
+    "turbulence": {
+      "simulationType": "laminar"
+    }
+  },
+  "outputs": null
+}
+```
+
+When `solved: true`, the `outputs` section is populated:
+
+```json
+{
+  "outputs": {
+    "time_directories": ["0", "0.1", "0.2", "0.5"],
+    "final_time": "0.5",
+    "fields_at_final_time": ["U", "p"],
+    "convergence": {
+      "converged": true,
+      "final_residuals": {"Ux": 1e-06, "p": 2e-06},
+      "time_steps": [0.1, 0.2, 0.5],
+      "execution_time_seconds": 2.1,
+      "warnings": [],
+      "errors": []
+    },
+    "field_statistics": {
+      "p": {"min": -0.5, "max": 1.2, "mean": 0.03},
+      "U": {
+        "magnitude": {"min": 0.0, "max": 1.0, "mean": 0.23},
+        "x": {"min": -0.1, "max": 1.0, "mean": 0.21},
+        "y": {"min": -0.3, "max": 0.3, "mean": 0.01},
+        "z": {"min": 0.0, "max": 0.0, "mean": 0.0}
+      }
+    }
+  }
+}
+```
+
+**Notes:**
+- Physical properties are read from `constant/physicalProperties` (OpenFOAM v13) or `constant/transportProperties` (older versions), with `constant/phaseProperties` also checked for multiphase VoF cases
+- Turbulence settings are read from `constant/momentumTransport` (OpenFOAM v13) or `constant/turbulenceProperties` (older versions)
+- Field statistics require `Ofpp` and `numpy`; if unavailable, `field_statistics` will be `{}`
+- `convergence` is only populated if `foamRun.log` exists in the case root
