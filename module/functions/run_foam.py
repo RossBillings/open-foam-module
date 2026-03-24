@@ -147,11 +147,14 @@ def run_foam(input_json: str, temp_dir: str) -> List[Output]:
     convergence_path = temp / "convergence_report.json"
     convergence_path.write_text(json.dumps(report, indent=2))
 
-    # 9. Copy logs into case archive
+    # 9. Copy logs into case archive + solver log to case root for extract_foam
     case_logs_dir = case_dir / "logs"
     case_logs_dir.mkdir(exist_ok=True)
     for lf in log_dir.iterdir():
         (case_logs_dir / lf.name).write_bytes(lf.read_bytes())
+    # foamRun.log at case root so extract_foam can parse residuals/convergence
+    if solver_log.exists():
+        (case_dir / "foamRun.log").write_bytes(solver_log.read_bytes())
 
     # 10. Re-zip solved case
     solved_zip_name = f"{case_name}_solved.foam.zip"
