@@ -45,7 +45,7 @@ jobs:
         run: poetry install
 
       - name: Build binary
-        run: bash scripts/linux/build.sh
+        run: poetry run poe build_binary
 
       - name: Package module zip
         run: |
