@@ -3,7 +3,7 @@
   "module_name": "@istari:openfoam",
   "module_display_name": "OpenFOAM v13 Solver",
   "module_type": "function",
-  "module_version": "0.4.0",
+  "module_version": "0.6.0",
   "module_checksum": "hash",
   "internal": true,
   "operating_systems": ["Ubuntu 22.04", "Ubuntu 24.04", "RHEL 9"],

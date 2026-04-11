@@ -1,0 +1,92 @@
+name: Build and Publish Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Update module_manifest.json version
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          python3 -c "
+          import json, sys
+          with open('module_manifest.json') as f:
+              m = json.load(f)
+          m['module_version'] = '$VERSION'
+          with open('module_manifest.json', 'w') as f:
+              json.dump(m, f, indent=2)
+          print(f'Set module_version to $VERSION')
+          "
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pipx and poetry
+        run: |
+          pip install pipx
+          pipx install poetry
+          echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: poetry install
+
+      - name: Build binary
+        run: bash scripts/linux/build.sh
+
+      - name: Package module zip
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          zip -r "openfoam_module_v${VERSION}.zip" \
+            module_manifest.json \
+            openfoam_module/ \
+            scripts/
+          echo "Created openfoam_module_v${VERSION}.zip"
+          ls -lh "openfoam_module_v${VERSION}.zip"
+
+      - name: Download stari CLI
+        env:
+          STARI_VERSION: ${{ vars.STARI_VERSION || '0.21.1' }}
+        run: |
+          curl -fsSL \
+            "https://github.com/istari-digital-internal/stari/releases/download/v${STARI_VERSION}/stari_ubuntu_22_04-amd64-v${STARI_VERSION}.tar.gz" \
+            -o stari.tar.gz
+          tar -xzf stari.tar.gz
+          chmod +x stari_ubuntu_22_04-amd64/stari_ubuntu_22_04-amd64
+          echo "${PWD}/stari_ubuntu_22_04-amd64" >> "$GITHUB_PATH"
+
+      - name: Configure stari
+        env:
+          ISTARI_REGISTRY_URL: ${{ vars.ISTARI_REGISTRY_URL }}
+          ISTARI_REGISTRY_AUTH_TOKEN: ${{ secrets.ISTARI_REGISTRY_AUTH_TOKEN }}
+        run: |
+          mkdir -p ~/.config/istari_digital
+          cat > ~/.config/istari_digital/istari_digital_config.yaml <<EOF
+          cli:
+            istari_digital_registry_url: "${ISTARI_REGISTRY_URL}"
+            istari_digital_registry_auth_token: "${ISTARI_REGISTRY_AUTH_TOKEN}"
+          EOF
+
+      - name: Publish module to Istari platform
+        run: stari_ubuntu_22_04-amd64 client publish module_manifest.json
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          generate_release_notes: true
+          files: openfoam_module_v${{ steps.version.outputs.VERSION }}.zip
